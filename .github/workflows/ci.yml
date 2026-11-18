@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    name: Lint, tipos, pruebas y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: ffmpeg (lo usan el motor y las pruebas)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Prueba de punta a punta en Chrome
+        run: node tests/e2e/web.e2e.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - name: Capturas y vídeo de la prueba
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: |
+            out/web_*.png
+            out/web_export.mp4
+          if-no-files-found: ignore
+      - name: Web construida
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist

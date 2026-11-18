@@ -1,0 +1,50 @@
+# Publica la web en Cloudflare Pages en cada push a main.
+# Necesita dos secretos del repositorio (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   (token con permiso "Cloudflare Pages: Edit")
+#   CLOUDFLARE_ACCOUNT_ID  (en el panel de Cloudflare, menú de la cuenta)
+# Alternativa sin secretos: conectar el repositorio desde el panel de Cloudflare Pages
+# (build: `npm run build`, carpeta: `dist`) y borrar este archivo.
+name: Publicar en Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: ¿Hay credenciales de Cloudflare?
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "Sin CLOUDFLARE_API_TOKEN: no se publica (ver comentario al inicio del workflow)."
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.creds.outputs.ok == 'true'
+      - run: npm run build
+        if: steps.creds.outputs.ok == 'true'
+      - name: Subir a Cloudflare Pages
+        if: steps.creds.outputs.ok == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=bolas-al-ritmo --branch=main

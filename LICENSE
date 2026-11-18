@@ -1,0 +1,8 @@
+Copyright (c) 2026 h00agui. Todos los derechos reservados.
+
+Este software es privado. No se concede permiso para copiarlo, modificarlo,
+distribuirlo ni usarlo sin autorización expresa del titular.
+
+Componentes de terceros (ver THIRD_PARTY.md): FluidR3 GM (MIT), Basic Pitch (Apache 2.0),
+TensorFlow.js (Apache 2.0), @tonejs/midi (MIT), mp4-muxer (MIT), @napi-rs/canvas (MIT),
+Inter (SIL Open Font License 1.1).

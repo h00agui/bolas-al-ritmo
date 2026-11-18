@@ -22,6 +22,10 @@ export default tseslint.config(
         URL: 'readonly',
         Buffer: 'readonly',
         setTimeout: 'readonly',
+        // el código dentro de page.evaluate() corre en el navegador
+        window: 'readonly',
+        document: 'readonly',
+        btoa: 'readonly',
       },
     },
   },

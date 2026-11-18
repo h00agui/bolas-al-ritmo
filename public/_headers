@@ -1,0 +1,7 @@
+# Cabeceras para Cloudflare Pages: cachear los recursos pesados que no cambian.
+/instruments/*
+  Cache-Control: public, max-age=31536000, immutable
+/models/*
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

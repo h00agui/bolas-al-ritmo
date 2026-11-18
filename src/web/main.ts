@@ -6,7 +6,6 @@ import { INSTRUMENTS, type Instrument } from '@core/audio/instruments.ts';
 import { PALETTES, hexToRgb, luminance, rgbToHex } from '@core/color.ts';
 import { parseMidi, writeMidi } from '@core/midi/parse.ts';
 import { MODES, getMode } from '@core/modes/index.ts';
-import { hitsDuration } from '@core/music/hits.ts';
 import { buildProject, defaultProject, normalizeProject, planChanged, type Project } from '@core/project.ts';
 import type { CanvasLike, DrawEnv } from '@core/scene/draw.ts';
 import { DEFAULT_STYLE, type SceneStyle } from '@core/scene/style.ts';

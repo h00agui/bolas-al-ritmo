@@ -1,0 +1,14 @@
+# Componentes de terceros
+
+| Componente                                                                                                                                                                       | Uso                                                       | Licencia         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------- |
+| [FluidR3 GM](https://github.com/gleitz/midi-js-soundfonts) (Frank Wen)                                                                                                           | Samples de los instrumentos (`public/instruments/*.pack`) | MIT              |
+| [Basic Pitch](https://github.com/spotify/basic-pitch-ts) (Spotify)                                                                                                               | Conversión de audio a MIDI en el navegador                | Apache 2.0       |
+| [TensorFlow.js](https://github.com/tensorflow/tfjs)                                                                                                                              | Ejecuta el modelo de Basic Pitch                          | Apache 2.0       |
+| [@tonejs/midi](https://github.com/Tonejs/Midi)                                                                                                                                   | Lectura y escritura de archivos MIDI                      | MIT              |
+| [mp4-muxer](https://github.com/Vanilagy/mp4-muxer)                                                                                                                               | Empaquetado MP4 en el navegador                           | MIT              |
+| [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas)                                                                                                                        | Dibujo en Node para el motor de render                    | MIT              |
+| [Inter](https://rsms.me/inter/) (vía @fontsource)                                                                                                                                | Tipografía de la web y de los vídeos                      | SIL OFL 1.1      |
+| [Vite](https://vite.dev), [Vitest](https://vitest.dev), [ESLint](https://eslint.org), [Prettier](https://prettier.io), [tsx](https://tsx.is), [puppeteer-core](https://pptr.dev) | Herramientas de desarrollo                                | MIT / Apache 2.0 |
+
+Ninguna de estas licencias exige atribución dentro de los vídeos generados. La música que subas es responsabilidad de quien la usa: para publicar vídeos con canciones con derechos conviene usar la biblioteca de sonidos de la propia plataforma (TikTok, Instagram) o música con licencia.
