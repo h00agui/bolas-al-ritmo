@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.3.0 — 2026-11-18
+
+- El modo 3D pasa a ser **Circuito 3D**: la canción se divide en tramos y cada tramo usa una pieza distinta (placas cromadas, barras de xilófono con el largo de su nota, tambores, bumpers de pinball); selector de piezas (automático o una fija) y **variante** (semilla) para otro trazado con la misma canción.
+- **Varias bolas**: los golpes se reparten entre hasta 6 bolas según la separación mínima; los acordes caen a la vez en bolas distintas.
+- **Director de cámara**: planos de seguimiento, bajos, cenitales, laterales y generales con cortes o transiciones en los límites de los tramos; vibración en los golpes fuertes.
+- Resplandor (bloom) ajustable y textura sutil en el suelo.
+
 ## 0.2.0 — 2026-11-18
 
 - Nuevo modo **Plataformas 3D** (three.js): suelo con sombras suaves, placas cromadas sobre varillas que rebotan como un muelle al golpe, bola tipo canica, chispas y cámara diagonal que sigue a la bola. Ajustes de suelo, material, cámara, luz, avance, anchura, tamaño de placa y de bola, rebote y "agudos más altos".

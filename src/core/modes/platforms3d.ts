@@ -4,22 +4,38 @@ import { drawHud, FONT, type Ctx, type DrawEnv } from '../scene/draw.ts';
 import type { SceneStyle } from '../scene/style.ts';
 import { VIDEO_H as H, VIDEO_W as W } from '../types.ts';
 import { COMMON_PLAN_KEYS, type Mode } from './mode.ts';
-import { planPlatforms3d, type Plan3D } from './platforms3d.plan.ts';
+import { planCircuit, type CircuitPlan } from './circuit.plan.ts';
 import type { Scene3D } from '../three/scene3d.ts';
 
-export const platforms3dMode: Mode<Plan3D> = {
+export const platforms3dMode: Mode<CircuitPlan> = {
   id: 'platforms3d',
-  name: 'Plataformas 3D',
-  description: 'Placas cromadas sobre un suelo con sombras; la bola avanza a saltos y la cámara la sigue.',
-  planKeys: [...COMMON_PLAN_KEYS, 'pace3d', 'spread3d', 'heightByPitch', 'tileSize', 'ballSize3d'],
+  name: 'Circuito 3D',
+  description:
+    'Varias bolas recorren un circuito de placas, barras de xilófono, tambores y bumpers; la cámara cambia de plano por tramos.',
+  planKeys: [
+    ...COMMON_PLAN_KEYS,
+    'pace3d',
+    'spread3d',
+    'heightByPitch',
+    'tileSize',
+    'ballSize3d',
+    'maxBalls',
+    'pieces',
+    'cameraDirector',
+    'seed',
+    'cameraAzimuth',
+    'cameraElevation',
+    'cameraDistance',
+  ],
   requiresWebGL: true,
-  plan: planPlatforms3d,
+  multiBall: true,
+  plan: planCircuit,
   async prepare(env: DrawEnv) {
     if (env.cache.scene3d) return;
     const { Scene3D } = await import('../three/scene3d.ts');
     env.cache.scene3d = new Scene3D();
   },
-  draw(ctx: Ctx, t: number, plan: Plan3D, st: SceneStyle, env: DrawEnv) {
+  draw(ctx: Ctx, t: number, plan: CircuitPlan, st: SceneStyle, env: DrawEnv) {
     const scene = env.cache.scene3d as Scene3D | undefined;
     const m = ctx.getTransform();
     ctx.setTransform(1, 0, 0, 1, 0, 0);

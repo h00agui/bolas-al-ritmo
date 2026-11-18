@@ -55,9 +55,18 @@ export interface Built {
 
 /** Choques, duración y plan de un proyecto a partir de su partitura (o de sus choques guardados). */
 export function buildProject(project: Project, score: Score | null): Built {
-  const hits = score ? scoreToHits(score, project.music) : (project.hits ?? []);
-  const duration = hitsDuration(hits);
-  const plan = getMode(project.style.mode).plan(hits, duration, project.style);
+  const mode = getMode(project.style.mode);
+  const multi = !!mode.multiBall && project.style.maxBalls > 1;
+  // con varias bolas, los choques se extraen sin unir notas cercanas: el reparto entre bolas aplica la separación
+  const music = multi ? { ...project.music, minGap: 0.03 } : project.music;
+  let hits = score ? scoreToHits(score, music) : (project.hits ?? []);
+  let duration = hitsDuration(hits);
+  const plan = mode.plan(hits, duration, project.style, { minGap: project.music.minGap });
+  const audio = (plan as { audioHits?: Hit[] }).audioHits;
+  if (audio) {
+    hits = audio;
+    duration = Math.max(duration, hitsDuration(hits));
+  }
   return { hits, duration, plan };
 }
 

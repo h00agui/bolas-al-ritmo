@@ -626,6 +626,11 @@ const CTLS: Ctl[] = [
   numCtl('ballSize3d', st as never, 'ballSize3d', 'style', (v) => `${fmt(v, 2)}`),
   numCtl('recoil', st as never, 'recoil', 'style', (v) => `×${fmt(v, 1)}`),
   boolCtl('heightByPitch', st as never, 'heightByPitch', 'style'),
+  numCtl('maxBalls', st as never, 'maxBalls', 'style', (v) => `${v}`),
+  strCtl('pieces', st as never, 'pieces', 'style'),
+  boolCtl('cameraDirector', st as never, 'cameraDirector', 'style'),
+  numCtl('seed', st as never, 'seed', 'style', (v) => `#${v}`),
+  numCtl('bloom', st as never, 'bloom', 'style', (v) => `${Math.round(v * 100)} %`),
   boolCtl('counter', st as never, 'counter', 'style'),
   numCtl(
     'onsetThresh',
@@ -697,9 +702,11 @@ function onChange(c: Ctl, el: HTMLInputElement | HTMLSelectElement): void {
     if (c.id === 'mode') {
       replan();
       void prepareMode();
-    } else if (planChanged(project.style.mode, before, project.style)) schedule(replan, 120);
+    } else if (c.id === 'maxBalls') schedule(rebuild, 120);
+    else if (planChanged(project.style.mode, before, project.style)) schedule(replan, 120);
     else drawFrame();
-    if (['mode', 'colorMode', 'palette', 'ringMode', 'bgTop', 'bgBottom'].includes(c.id)) syncControls();
+    if (['mode', 'colorMode', 'palette', 'ringMode', 'bgTop', 'bgBottom', 'cameraDirector'].includes(c.id))
+      syncControls();
   }
   persist();
 }
@@ -880,6 +887,7 @@ function start(): void {
       return {
         project,
         hits,
+        plan,
         duration,
         score: score && { name: score.name, notes: score.notes.length, duration: score.duration },
       };

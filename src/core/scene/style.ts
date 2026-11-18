@@ -54,6 +54,12 @@ export interface SceneStyle {
   tileSize: number; // unidades (largo de la placa)
   recoil: number; // 0..2 fuerza del rebote de la placa
   ballSize3d: number; // radio en unidades
+  // circuito
+  maxBalls: number; // 1..6
+  pieces: 'auto' | 'plate' | 'bar' | 'drum' | 'bumper';
+  cameraDirector: boolean; // planos y cortes automáticos
+  seed: number; // variante del trazado
+  bloom: number; // 0..1
 }
 
 export const DEFAULT_STYLE: SceneStyle = {
@@ -103,6 +109,11 @@ export const DEFAULT_STYLE: SceneStyle = {
   tileSize: 1,
   recoil: 1,
   ballSize3d: 0.2,
+  maxBalls: 3,
+  pieces: 'auto',
+  cameraDirector: true,
+  seed: 1,
+  bloom: 0.35,
 };
 
 /** Color de cada choque según el modo de color. */

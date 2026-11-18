@@ -219,6 +219,32 @@
         <div class="panel wide">
           <h2>Ajustes de la escena</h2>
           <div class="grid2">
+            <div data-mode="platforms3d" class="row">
+              <label for="maxBalls">Bolas (máximo)</label
+              ><input type="range" id="maxBalls" min="1" max="6" step="1" /><output id="maxBallsV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="pieces">Piezas del circuito</label
+              ><select id="pieces">
+                <option value="auto">Automático por tramos</option>
+                <option value="plate">Solo placas</option>
+                <option value="bar">Solo barras de xilófono</option>
+                <option value="drum">Solo tambores</option>
+                <option value="bumper">Solo bumpers</option>
+              </select>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="cameraDirector">Cámara automática</label
+              ><input type="checkbox" id="cameraDirector" />
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="seed">Variante</label
+              ><input type="range" id="seed" min="1" max="50" step="1" /><output id="seedV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="bloom">Resplandor</label
+              ><input type="range" id="bloom" min="0" max="1" step="0.05" /><output id="bloomV"></output>
+            </div>
             <div data-mode="platforms3d" class="row two">
               <label for="floorColor">Color del suelo</label>
               <div class="swatches"><input type="color" id="floorColor" /></div>
