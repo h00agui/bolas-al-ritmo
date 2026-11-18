@@ -235,8 +235,33 @@
               </select>
             </div>
             <div data-mode="platforms3d" class="row two">
-              <label for="cameraDirector">Cámara automática</label
+              <label for="cameraDirector">Cámara con ángulo cambiante (muy suave)</label
               ><input type="checkbox" id="cameraDirector" />
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="ballStyle3d">Aspecto de la bola</label
+              ><select id="ballStyle3d">
+                <option value="brillo">Brillante (plástico pulido)</option>
+                <option value="cromo">Cromo (metal espejo)</option>
+                <option value="cristal">Cristal</option>
+                <option value="mate">Mate</option>
+                <option value="neon">Neón (luminosa)</option>
+              </select>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="ballColor3d">Color de la bola</label
+              ><select id="ballColor3d">
+                <option value="nota">El de cada nota (cambia al golpear)</option>
+                <option value="fija">Fijo</option>
+              </select>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="ballColorFixed">Color fijo de la bola</label>
+              <div class="swatches"><input type="color" id="ballColorFixed" /></div>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="trail3d">Estela de la bola</label
+              ><input type="range" id="trail3d" min="0" max="1" step="0.05" /><output id="trail3dV"></output>
             </div>
             <div data-mode="platforms3d" class="row">
               <label for="seed">Variante</label

@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.5.0 — 2026-11-19
+
+- **Cámara suave de verdad**: distancia fija durante todo el vídeo (sin zoom), sin cortes ni vibración; sigue a las bolas con un filtro simétrico que anticipa el movimiento y cambia de ángulo muy despacio por tramos (opción "Cámara con ángulo cambiante"; si se apaga, ángulo fijo).
+- **Carriles**: cuando entre dos notas pasan más de 0,7 s la bola no flota: baja rodando por un carril cromado (serpentina con soportes a la pared) a velocidad creíble y sale justo a tiempo a la pieza siguiente. Entre notas cercanas, los saltos tienen gravedad real como mínimo.
+- **Teclas limpias** (sin nombre de nota) que **se iluminan del color de su nota** al golpe y se van apagando poco a poco; placas y barras también se tiñen.
+- **Estela de la bola** configurable (largo) y **aspecto de la bola** a elegir: brillante, cromo, cristal, mate o neón; color de la bola el de cada nota o uno fijo.
+- Con varias bolas, cada una baja por su propio carril vertical (sin solaparse) y, en automático, se usan piezas compactas (teclas y bumpers).
+- Corregido: al retroceder en la vista previa, las piezas golpeadas volvían a verse encendidas; las filas de ajustes comunes a Plataformas y Aro no se mostraban.
+
 ## 0.4.0 — 2026-11-18
 
 - **Circuito vertical**: las piezas cuelgan de una pared y las bolas caen de arriba abajo por gravedad, de pieza en pieza, llegando exactas a cada nota (la caída inicial entra por arriba del plano). Ajustes "Velocidad de caída" y "Anchura del circuito".

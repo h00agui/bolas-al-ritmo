@@ -11,7 +11,7 @@ export const platforms3dMode: Mode<CircuitPlan> = {
   id: 'platforms3d',
   name: 'Circuito 3D',
   description:
-    'Varias bolas recorren un circuito de placas, barras de xilófono, tambores y bumpers; la cámara cambia de plano por tramos.',
+    'Las bolas caen por gravedad por un circuito de pared: teclas de piano (o placas, barras, tambores y bumpers) y carriles entre notas lejanas; la cámara sigue suave, sin cortes ni zoom.',
   planKeys: [
     ...COMMON_PLAN_KEYS,
     'pace3d',

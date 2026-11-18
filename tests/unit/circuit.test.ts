@@ -8,6 +8,7 @@ import {
   ballAtPlan,
   cameraAt,
   composeSegments,
+  onRail,
   planCircuit,
   recoilAt,
   shakeAt,
@@ -65,7 +66,8 @@ describe('planCircuit', () => {
       for (let j = i + 1; j < ps.length; j++) {
         if (Math.abs(ps[i].P[1] - ps[j].P[1]) > 2.5) continue;
         const d = Math.hypot(ps[i].P[0] - ps[j].P[0], ps[i].P[1] - ps[j].P[1]);
-        expect(d).toBeGreaterThan(0.7);
+        // misma bola: holgura estética; bolas distintas (cada una en su carril): que no se toquen
+        expect(d).toBeGreaterThan(ps[i].ball === ps[j].ball ? 0.7 : 0.5);
       }
   });
 
@@ -81,7 +83,7 @@ describe('planCircuit', () => {
     expect(fixed.every((s) => s.kind === 'drum')).toBe(true);
   });
 
-  it('la cámara encuadra siempre a todas las bolas en escena y vibra en los acentos', () => {
+  it('la cámara encuadra siempre a todas las bolas en escena', () => {
     const aspect = 9 / 16;
     let checked = 0;
     for (let t = 0; t < plan.duration; t += 0.25) {
@@ -102,9 +104,10 @@ describe('planCircuit', () => {
       const tanV = Math.tan((c.fov * Math.PI) / 360);
       const tanH = tanV * aspect;
       for (const b of plan.balls) {
-        // al acabar su último golpe la bola cae y sale de plano a propósito
+        // al acabar su último golpe la bola cae y sale de plano a propósito; al empezar entra por arriba
         if (!ballActive(b, t) || t > b.T[b.T.length - 1] + (b.tail?.hold ?? 1)) continue;
         const p = ballAtPlan(b, plan, t);
+        if (t < b.T[0] && p[1] > b.P[0][1] + 1.3) continue;
         const v = [p[0] - c.pos[0], p[1] - c.pos[1], p[2] - c.pos[2]];
         const depth = v[0] * fw[0] + v[1] * fw[1] + v[2] * fw[2];
         expect(depth).toBeGreaterThan(0);
@@ -119,6 +122,56 @@ describe('planCircuit', () => {
     const strong = plan.audioHits.find((h) => h.strength > 0.8);
     if (strong) expect(shakeAt(plan, strong.t + 0.02)).toBeGreaterThan(0);
     expect(recoilAt(2, 1, 1)).toBe(0);
+  });
+
+  it('la cámara no hace zoom (distancia fija) ni da tirones', () => {
+    let prev: ReturnType<typeof cameraAt> | null = null;
+    for (let t = 0; t < plan.duration; t += 1 / 60) {
+      const c = cameraAt(plan, t);
+      const d = Math.hypot(c.look[0] - c.pos[0], c.look[1] - c.pos[1], c.look[2] - c.pos[2]);
+      expect(Math.abs(d - plan.camDist)).toBeLessThan(1e-3);
+      if (prev) {
+        // movimiento por fotograma acotado (sin cortes): menos de 0,12 unidades a 60 Hz
+        const step = Math.hypot(c.pos[0] - prev.pos[0], c.pos[1] - prev.pos[1], c.pos[2] - prev.pos[2]);
+        expect(step).toBeLessThan(0.12);
+      }
+      prev = c;
+    }
+  });
+
+  it('entre notas lejanas la bola baja por un carril, sin subir y sin saltos de posición', () => {
+    const times = [0.5, 1.0, 1.8, 3.3, 3.5, 3.7, 6.7, 7.0, 13.0, 13.4, 14.2, 20.0, 20.3];
+    const hits = times.map((t, i) => ({
+      t,
+      strength: 0.7,
+      notes: [{ midi: 60 + ((i * 5) % 12), velocity: 0.8, duration: 0.4 }],
+    }));
+    const sparse = planCircuit(hits, 22, DEFAULT_STYLE, { minGap: 0.1 });
+    expect(sparse.rails.length).toBeGreaterThanOrEqual(5);
+    const b = sparse.balls[0];
+    for (const r of sparse.rails) {
+      expect(r.tA).toBeGreaterThan(b.T[r.k]);
+      expect(r.tB).toBeLessThan(b.T[r.k + 1]);
+      for (let i = 1; i < r.pts.length; i++) expect(r.pts[i][1]).toBeLessThanOrEqual(r.pts[i - 1][1] + 1e-6);
+      expect(onRail(b, sparse, (r.tA + r.tB) / 2)).toBe(true);
+      // la bola rueda a una velocidad creíble (ni flota ni vuela)
+      let len = 0;
+      for (let i = 1; i < r.pts.length; i++)
+        len += Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]);
+      const v = len / (r.tB - r.tA);
+      expect(v).toBeGreaterThan(1.5);
+      expect(v).toBeLessThan(6);
+    }
+    let prev: number[] | null = null;
+    for (let t = b.pre!.tRel; t < b.T[b.T.length - 1]; t += 1 / 120) {
+      const p = ballAtPlan(b, sparse, t);
+      if (prev) expect(Math.hypot(p[0] - prev[0], p[1] - prev[1], p[2] - prev[2])).toBeLessThan(0.25);
+      prev = p;
+    }
+    for (let k = 0; k < b.T.length; k++) {
+      const p = ballAtPlan(b, sparse, b.T[k] - 1e-4);
+      expect(Math.hypot(p[0] - b.P[k][0], p[1] - b.P[k][1])).toBeLessThan(0.02);
+    }
   });
 
   it('la semilla cambia el trazado sin cambiar los tiempos', () => {

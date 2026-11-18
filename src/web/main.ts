@@ -629,6 +629,10 @@ const CTLS: Ctl[] = [
   numCtl('maxBalls', st as never, 'maxBalls', 'style', (v) => `${v}`),
   strCtl('pieces', st as never, 'pieces', 'style'),
   boolCtl('cameraDirector', st as never, 'cameraDirector', 'style'),
+  strCtl('ballStyle3d', st as never, 'ballStyle3d', 'style'),
+  strCtl('ballColor3d', st as never, 'ballColor3d', 'style'),
+  strCtl('ballColorFixed', st as never, 'ballColorFixed', 'style'),
+  numCtl('trail3d', st as never, 'trail3d', 'style', (v) => `${Math.round(v * 100)} %`),
   numCtl('seed', st as never, 'seed', 'style', (v) => `#${v}`),
   numCtl('bloom', st as never, 'bloom', 'style', (v) => `${Math.round(v * 100)} %`),
   boolCtl('counter', st as never, 'counter', 'style'),
@@ -666,10 +670,18 @@ function syncControls(): void {
   $('customRow').hidden = project.style.colorMode !== 'paleta' || project.style.palette !== 'personalizada';
   document
     .querySelectorAll<HTMLElement>('[data-mode]')
-    .forEach((el) => (el.hidden = el.dataset.mode !== project.style.mode));
+    .forEach((el) => (el.hidden = !(el.dataset.mode ?? '').split(/\s+/).includes(project.style.mode)));
   $('ringColor')
     .closest('.row')!
     .toggleAttribute('hidden', project.style.mode !== 'ring' || project.style.ringMode !== 'fijo');
+  const is3d = project.style.mode === 'platforms3d';
+  for (const id of ['cameraAzimuth', 'cameraElevation', 'cameraDistance'])
+    $(id)
+      .closest('.row')!
+      .toggleAttribute('hidden', !is3d || project.style.cameraDirector);
+  $('ballColorFixed')
+    .closest('.row')!
+    .toggleAttribute('hidden', !is3d || project.style.ballColor3d !== 'fija');
   $('modeDesc').textContent = getMode(project.style.mode).description;
   for (const b of document.querySelectorAll<HTMLButtonElement>('.preset')) {
     const p = PRESETS[b.dataset.p!].style;
@@ -705,7 +717,18 @@ function onChange(c: Ctl, el: HTMLInputElement | HTMLSelectElement): void {
     } else if (c.id === 'maxBalls') schedule(rebuild, 120);
     else if (planChanged(project.style.mode, before, project.style)) schedule(replan, 120);
     else drawFrame();
-    if (['mode', 'colorMode', 'palette', 'ringMode', 'bgTop', 'bgBottom', 'cameraDirector'].includes(c.id))
+    if (
+      [
+        'mode',
+        'colorMode',
+        'palette',
+        'ringMode',
+        'bgTop',
+        'bgBottom',
+        'cameraDirector',
+        'ballColor3d',
+      ].includes(c.id)
+    )
       syncControls();
   }
   persist();
@@ -927,6 +950,9 @@ function start(): void {
     },
     get ready() {
       return preparing ?? Promise.resolve();
+    },
+    get env() {
+      return previewEnv;
     },
   };
 }

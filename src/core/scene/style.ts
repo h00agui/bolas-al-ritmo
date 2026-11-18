@@ -57,9 +57,13 @@ export interface SceneStyle {
   // circuito
   maxBalls: number; // 1..6
   pieces: 'auto' | 'key' | 'plate' | 'bar' | 'drum' | 'bumper';
-  cameraDirector: boolean; // planos y cortes automáticos
+  cameraDirector: boolean; // la cámara cambia de ángulo muy despacio por tramos (si no, ángulo fijo)
   seed: number; // variante del trazado
   bloom: number; // 0..1
+  ballStyle3d: 'brillo' | 'cromo' | 'cristal' | 'mate' | 'neon'; // aspecto de la bola
+  ballColor3d: 'nota' | 'fija'; // color de la bola: el de su nota o uno fijo
+  ballColorFixed: string; // color fijo de la bola
+  trail3d: number; // 0..1 largo de la estela
 }
 
 export const DEFAULT_STYLE: SceneStyle = {
@@ -104,7 +108,7 @@ export const DEFAULT_STYLE: SceneStyle = {
   lightAngle: 35,
   shadowSoftness: 0.6,
   pace3d: 2.6,
-  spread3d: 2.4,
+  spread3d: 1.6,
   heightByPitch: true,
   tileSize: 1,
   recoil: 1,
@@ -114,6 +118,10 @@ export const DEFAULT_STYLE: SceneStyle = {
   cameraDirector: true,
   seed: 1,
   bloom: 0.35,
+  ballStyle3d: 'brillo',
+  ballColor3d: 'nota',
+  ballColorFixed: '#ff4d6d',
+  trail3d: 0.45,
 };
 
 /** Color de cada choque según el modo de color. */

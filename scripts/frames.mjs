@@ -66,7 +66,7 @@ if (midi) {
       const bin = atob(b64);
       const u8 = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-      await window.__bolas.loadMidi(new File([u8], name));
+      await window.__bolas.loadMidi(u8.buffer, name);
     },
     buf.toString('base64'),
     path.basename(midi),
@@ -85,6 +85,12 @@ for (const t of times) {
   const file = path.join(outDir, `${mode}_${String(t).replace('.', '_')}.png`);
   await cv.screenshot({ path: file });
   console.log('capturado', file);
+}
+const evalCode = arg('eval', '');
+if (evalCode) {
+  // código que se evalúa en la página (p. ej. para inspeccionar la escena); se imprime el resultado en JSON
+  const out = await page.evaluate(evalCode);
+  console.log(JSON.stringify(out, null, 1));
 }
 if (process.argv.includes('--export')) {
   const t0 = Date.now();

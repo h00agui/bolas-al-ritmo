@@ -12,7 +12,6 @@ import {
   ballAtPlan,
   cameraAt,
   recoilAt,
-  shakeAt,
   type CircuitPlan,
   type Piece,
 } from '../modes/circuit.plan.ts';
@@ -28,16 +27,91 @@ const PLAN_STYLE_KEYS: (keyof SceneStyle)[] = [
   'noteNames',
   'tileSize',
   'floorColor',
+  'ballStyle3d',
+  'ballSize3d',
 ];
+const TRAIL_N = 40; // muestras de la estela
 
 interface PieceObj {
   piece: Piece;
   group: THREE.Group; // parte que se mueve con el golpe
   base: THREE.Vector3;
   normal: THREE.Vector3;
-  mats: THREE.MeshStandardMaterial[]; // materiales que destellan
+  mats: THREE.MeshStandardMaterial[]; // materiales que se iluminan
+  baseCol: THREE.Color[]; // color original de cada material
   pivot?: THREE.Group; // teclas: giran sobre su bisagra en vez de hundirse
   lever?: number; // distancia bisagra → punto de contacto
+}
+
+/** Estela de una bola: cinta orientada a cámara con el color de la bola, que se desvanece hacia atrás. */
+class Trail {
+  readonly mesh: THREE.Mesh;
+  private pos: Float32Array;
+  private col: Float32Array;
+  constructor() {
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(TRAIL_N * 2 * 3);
+    this.col = new Float32Array(TRAIL_N * 2 * 3);
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    const idx: number[] = [];
+    for (let i = 0; i < TRAIL_N - 1; i++) {
+      const a = i * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    g.setIndex(idx);
+    this.mesh = new THREE.Mesh(
+      g,
+      new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      }),
+    );
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 1;
+  }
+  /** points: del más reciente al más antiguo; width: anchura en la cabeza. */
+  update(
+    points: THREE.Vector3[],
+    camPos: THREE.Vector3,
+    width: number,
+    color: THREE.Color,
+    strength: number,
+  ): void {
+    const n = points.length;
+    const side = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    const view = new THREE.Vector3();
+    for (let i = 0; i < TRAIL_N; i++) {
+      const p = points[Math.min(i, n - 1)];
+      const q = points[Math.min(i + 1, n - 1)];
+      dir.subVectors(i + 1 < n ? q : p, i + 1 < n ? p : points[Math.max(0, n - 2)]);
+      if (dir.lengthSq() < 1e-8) dir.set(0, -1, 0);
+      view.subVectors(camPos, p).normalize();
+      side.crossVectors(dir.normalize(), view).normalize();
+      const f = 1 - i / (n - 1 || 1);
+      const w = width * (0.15 + 0.85 * f) * (i < n ? 1 : 0);
+      const o = i * 6;
+      this.pos[o] = p.x + side.x * w;
+      this.pos[o + 1] = p.y + side.y * w;
+      this.pos[o + 2] = p.z + side.z * w;
+      this.pos[o + 3] = p.x - side.x * w;
+      this.pos[o + 4] = p.y - side.y * w;
+      this.pos[o + 5] = p.z - side.z * w;
+      const a = strength * f * f * 0.9;
+      for (let v = 0; v < 2; v++) {
+        this.col[o + v * 3] = color.r * a;
+        this.col[o + v * 3 + 1] = color.g * a;
+        this.col[o + v * 3 + 2] = color.b * a;
+      }
+    }
+    (this.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (this.mesh.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  }
 }
 
 export class Scene3D {
@@ -53,6 +127,9 @@ export class Scene3D {
   private floorMat: THREE.MeshStandardMaterial;
   private balls: THREE.Mesh[] = [];
   private ballMats: THREE.MeshPhysicalMaterial[] = [];
+  private trails: Trail[] = [];
+  private trailPts: THREE.Vector3[] = Array.from({ length: TRAIL_N }, () => new THREE.Vector3());
+  private lastK: number[] = []; // último choque dibujado por bola (para limpiar al retroceder)
   private pieces: PieceObj[] = [];
   private root = new THREE.Group();
   private sparks: THREE.Points;
@@ -217,8 +294,14 @@ export class Scene3D {
     this.root.clear();
     this.pieces = [];
     for (const b of this.balls) this.scene.remove(b);
+    for (const tr of this.trails) {
+      this.scene.remove(tr.mesh);
+      tr.mesh.geometry.dispose();
+    }
     this.balls = [];
     this.ballMats = [];
+    this.trails = [];
+    this.lastK = [];
   }
 
   /** Construye las piezas (colgadas de la pared) y las bolas de un plan. */
@@ -282,11 +365,6 @@ export class Scene3D {
           pivot.position.z = -0.58 * len;
           key.position.z = len / 2;
           pivot.add(key);
-          if (st.noteNames && piece.name) {
-            const lab = this.makeLabel(piece.name, wd * 2.2, th / 2 + 0.003);
-            lab.position.z = 0.58 * len;
-            pivot.add(lab);
-          }
           group.add(pivot);
           pieceExtra = { pivot, lever: 0.58 * len };
           addBracket(center.x, center.y - th / 2 - 0.03, center.z - len * 0.4);
@@ -384,22 +462,96 @@ export class Scene3D {
       group.position.copy(center);
       group.quaternion.setFromUnitVectors(up, n);
       this.root.add(group);
-      this.pieces.push({ piece, group, base: center.clone(), normal: n, mats, ...pieceExtra });
+      this.pieces.push({
+        piece,
+        group,
+        base: center.clone(),
+        normal: n,
+        mats,
+        baseCol: mats.map((m) => m.color.clone()),
+        ...pieceExtra,
+      });
+    }
+    // carriles: dos tubos cromados por debajo de la trayectoria, con soportes a la pared
+    const railGeoCache: THREE.BufferGeometry[] = [];
+    for (const rail of plan.rails) {
+      const pts = rail.pts;
+      const step = Math.max(1, Math.floor(pts.length / 160));
+      for (const dz of [-0.55 * plan.r, 0.55 * plan.r]) {
+        const curve = new THREE.CatmullRomCurve3(
+          pts
+            .filter((_, i) => i % step === 0 || i === pts.length - 1)
+            .map((p) => new THREE.Vector3(p[0], p[1] - 0.72 * plan.r, p[2] + dz)),
+        );
+        const geo = new THREE.TubeGeometry(curve, Math.min(400, pts.length), 0.032, 10, false);
+        railGeoCache.push(geo);
+        const tube = new THREE.Mesh(geo, this.chrome);
+        tube.castShadow = true;
+        tube.receiveShadow = true;
+        this.root.add(tube);
+      }
+      // soportes cada ~1.3 unidades de recorrido
+      let acc = 1.3;
+      for (let i = 1; i < pts.length; i++) {
+        acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+        if (acc >= 1.3) {
+          acc = 0;
+          addBracket(pts[i][0], pts[i][1] - 0.72 * plan.r, pts[i][2] - 0.55 * plan.r);
+        }
+      }
     }
     for (let b = 0; b < plan.balls.length; b++) {
-      const mat = new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        roughness: 0.12,
-        metalness: 0.05,
-        clearcoat: 1,
-        clearcoatRoughness: 0.05,
-      });
+      const mat = this.ballMaterial(st);
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), mat);
       mesh.scale.setScalar(plan.r);
       mesh.castShadow = true;
       this.scene.add(mesh);
       this.balls.push(mesh);
       this.ballMats.push(mat);
+      const trail = new Trail();
+      this.scene.add(trail.mesh);
+      this.trails.push(trail);
+    }
+  }
+
+  /** Devuelve una pieza a su estado de reposo (sin luz ni hundimiento). */
+  private resetPiece(po: PieceObj): void {
+    po.group.position.copy(po.base);
+    po.group.scale.setScalar(1);
+    if (po.pivot) po.pivot.rotation.x = 0;
+    for (let mi = 0; mi < po.mats.length; mi++) {
+      po.mats[mi].color.copy(po.baseCol[mi]);
+      po.mats[mi].emissiveIntensity = po.piece.kind === 'bumper' ? 0.1 : 0;
+    }
+  }
+
+  /** Material de la bola según el aspecto elegido (el color se pone en cada fotograma). */
+  private ballMaterial(st: SceneStyle): THREE.MeshPhysicalMaterial {
+    switch (st.ballStyle3d) {
+      case 'cromo':
+        return new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.08, metalness: 1 });
+      case 'cristal':
+        return new THREE.MeshPhysicalMaterial({
+          color: 0xffffff,
+          roughness: 0.05,
+          metalness: 0,
+          transmission: 0.85,
+          thickness: 0.6,
+          ior: 1.5,
+          clearcoat: 1,
+        });
+      case 'mate':
+        return new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 });
+      case 'neon':
+        return new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0 });
+      default:
+        return new THREE.MeshPhysicalMaterial({
+          color: 0xffffff,
+          roughness: 0.12,
+          metalness: 0.05,
+          clearcoat: 1,
+          clearcoatRoughness: 0.05,
+        });
     }
   }
 
@@ -423,46 +575,103 @@ export class Scene3D {
     this.bloom.strength = 0.6 * st.bloom;
     this.bloom.enabled = st.bloom > 0.01;
 
-    // bolas y piezas golpeadas recientemente
+    // cámara (distancia fija; sin vibración: todo el vídeo es suave)
+    const cam = cameraAt(plan, t);
+    this.camera.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+    this.camera.lookAt(cam.look[0], cam.look[1], cam.look[2]);
+    if (Math.abs(this.camera.fov - cam.fov) > 0.01) {
+      this.camera.fov = cam.fov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    // bolas, estelas y piezas golpeadas recientemente
+    const fixedCol = rgb(hexToRgb(st.ballColorFixed));
     for (let b = 0; b < plan.balls.length; b++) {
       const bp = plan.balls[b];
-      this.balls[b].visible = ballActive(bp, t);
+      const active = ballActive(bp, t);
+      this.balls[b].visible = active;
       const k = visibleHit(bp.T, t, fps);
+      // al retroceder en el tiempo (o al saltar hacia delante) las piezas que ya no tocan vuelven al reposo
+      const prevK = this.lastK[b] ?? -1;
+      if (k < prevK || k > prevK + 26)
+        for (let j = Math.max(0, prevK - 26); j <= prevK; j++) this.resetPiece(this.pieces[bp.pieces[j]]);
+      this.lastK[b] = k;
       const age = k >= 0 ? t - frameTime(bp.T[k], fps) : 99;
       let pos = ballAtPlan(bp, plan, t);
       for (const j of [k, k + 1])
         if (j >= 0 && j < bp.T.length && Math.abs(t - bp.T[j]) < 0.5 / fps) pos = bp.P[j];
       this.balls[b].position.set(pos[0], pos[1], pos[2]);
-      const col = k >= 0 ? bp.col[k] : (bp.col[0] ?? plan.startCol);
+      const noteCol = rgb(k >= 0 ? bp.col[k] : (bp.col[0] ?? plan.startCol));
+      const col = st.ballColor3d === 'fija' ? fixedCol : noteCol;
       const hsl = { h: 0, s: 0, l: 0 };
-      rgb(col).getHSL(hsl);
-      this.ballMats[b].color.setHSL(hsl.h, Math.min(1, hsl.s * 1.5 + 0.1), hsl.l * 0.55);
-      this.ballMats[b].emissive.copy(rgb(col)).multiplyScalar(0.1 + 0.5 * Math.exp(-age / 0.08));
+      col.getHSL(hsl);
+      const mat = this.ballMats[b];
+      const flash = Math.exp(-age / 0.08);
+      switch (st.ballStyle3d) {
+        case 'cromo':
+          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 0.9), 0.55 + 0.3 * hsl.l);
+          mat.emissive.copy(col).multiplyScalar(0.4 * flash);
+          break;
+        case 'cristal':
+          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.2), 0.75);
+          mat.emissive.copy(col).multiplyScalar(0.25 + 0.5 * flash);
+          break;
+        case 'neon':
+          mat.color.setHSL(hsl.h, 1, 0.5);
+          mat.emissive.copy(col).multiplyScalar(1.6 + 1.2 * flash);
+          break;
+        case 'mate':
+          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.4 + 0.1), hsl.l * 0.6);
+          mat.emissive.copy(col).multiplyScalar(0.35 * flash);
+          break;
+        default:
+          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.5 + 0.1), hsl.l * 0.55);
+          mat.emissive.copy(col).multiplyScalar(0.1 + 0.5 * flash);
+      }
+      // estela: posiciones pasadas de la bola (hasta trail3d segundos), de la más reciente a la más antigua
+      const trail = this.trails[b];
+      const span = 0.08 + 0.6 * st.trail3d;
+      trail.mesh.visible = active && st.trail3d > 0.01 && t > bp.pre!.tRel + 0.05;
+      if (trail.mesh.visible) {
+        const n = TRAIL_N;
+        for (let i = 0; i < n; i++) {
+          const tt = Math.max(bp.pre!.tRel, t - (span * i) / (n - 1));
+          const q = ballAtPlan(bp, plan, tt);
+          this.trailPts[i].set(q[0], q[1], q[2]);
+        }
+        this.trailPts[0].set(pos[0], pos[1], pos[2]);
+        trail.update(
+          this.trailPts,
+          this.camera.position,
+          plan.r * (0.55 + 0.35 * st.trail3d),
+          col,
+          st.ballStyle3d === 'neon' ? 1.2 : 0.8,
+        );
+      }
       for (let j = Math.max(0, k - 25); j <= k && j < bp.T.length; j++) {
         const po = this.pieces[bp.pieces[j]];
         const a = t - frameTime(bp.T[j], fps);
         const d = recoilAt(a, bp.S[j], st.recoil) * (po.piece.kind === 'drum' ? 0.5 : 1);
         if (po.pivot && po.lever) po.pivot.rotation.x = Math.max(0, d) / po.lever;
         else po.group.position.copy(po.base).addScaledVector(po.normal, -d);
-        const glow = Math.exp(-a / 0.18);
-        for (const m of po.mats) {
-          m.emissive.copy(
-            po.piece.kind === 'plate' && st.material3d === 'cromo'
-              ? new THREE.Color(0xffffff)
-              : rgb(po.piece.col),
-          );
-          m.emissiveIntensity =
-            (po.piece.kind === 'bumper' ? 0.1 : 0) + (po.piece.kind === 'plate' ? 0.3 : 0.35) * glow;
+        // la pieza se ilumina del color de su nota: destello al golpe y luz que se apaga despacio
+        const flashP = Math.exp(-a / 0.3);
+        const sustain = Math.max(0, 1 - (k - j) / 22);
+        const pc = rgb(po.piece.col);
+        for (let mi = 0; mi < po.mats.length; mi++) {
+          const m = po.mats[mi];
+          if (po.piece.kind === 'key' || po.piece.kind === 'plate' || po.piece.kind === 'bar') {
+            m.color.copy(po.baseCol[mi]).lerp(pc, Math.min(1, 0.55 * sustain + 0.45 * flashP));
+            m.emissive.copy(pc);
+            m.emissiveIntensity = 0.35 * sustain + 0.9 * flashP;
+          } else {
+            m.emissive.copy(pc);
+            m.emissiveIntensity = (po.piece.kind === 'bumper' ? 0.1 : 0) + 0.15 * sustain + 0.6 * flashP;
+          }
         }
-        if (po.piece.kind === 'drum') po.group.scale.setScalar(1 + 0.06 * glow);
+        if (po.piece.kind === 'drum') po.group.scale.setScalar(1 + 0.06 * flashP);
       }
-      if (k >= 26) {
-        const po = this.pieces[bp.pieces[k - 26]];
-        po.group.position.copy(po.base);
-        po.group.scale.setScalar(1);
-        if (po.pivot) po.pivot.rotation.x = 0;
-        for (const m of po.mats) m.emissiveIntensity = po.piece.kind === 'bumper' ? 0.1 : 0;
-      }
+      if (k >= 26) this.resetPiece(this.pieces[bp.pieces[k - 26]]);
     }
 
     // chispas de los últimos choques (todas las bolas)
@@ -489,17 +698,6 @@ export class Scene3D {
     const ageH = kh >= 0 ? t - frameTime(plan.audioT[kh], fps) : 99;
     (this.sparks.material as THREE.PointsMaterial).opacity = ageH < 0.35 ? 0.85 * (1 - ageH / 0.35) : 0;
 
-    // cámara del director (+ vibración en los golpes fuertes)
-    const cam = cameraAt(plan, t);
-    const sh = shakeAt(plan, t) * 0.12;
-    const jx = sh * (rnd(Math.floor(t * 60), 1) - 0.5);
-    const jy = sh * (rnd(Math.floor(t * 60), 2) - 0.5);
-    this.camera.position.set(cam.pos[0] + jx, cam.pos[1] + jy, cam.pos[2]);
-    this.camera.lookAt(cam.look[0] + jx, cam.look[1] + jy, cam.look[2]);
-    if (Math.abs(this.camera.fov - cam.fov) > 0.01) {
-      this.camera.fov = cam.fov;
-      this.camera.updateProjectionMatrix();
-    }
     const focusX = cam.look[0];
     const focusY = cam.look[1];
     this.floor.position.set(focusX, focusY, plan.wallZ);
