@@ -86,7 +86,7 @@ export async function renderHits(
 export function normalize(channels: Float32Array[], target: number): void {
   let peak = 1e-6;
   for (const c of channels) for (let i = 0; i < c.length; i++) peak = Math.max(peak, Math.abs(c[i]));
-  const g = Math.min(target / peak, 4);
+  const g = Math.min(target / peak, 32);
   for (const c of channels)
     for (let i = 0; i < c.length; i++) {
       const v = c[i] * g;

@@ -1,5 +1,11 @@
 // Lectura y escritura de archivos MIDI (.mid) con @tonejs/midi.
-import { Midi } from '@tonejs/midi';
+import * as midiPkg from '@tonejs/midi';
+
+// El paquete trae una build ESM (Vite) y otra CommonJS (Node): se coge la clase de donde esté.
+type MidiCtor = typeof midiPkg.Midi;
+const Midi: MidiCtor =
+  (midiPkg as unknown as { Midi?: MidiCtor }).Midi ??
+  (midiPkg as unknown as { default: { Midi: MidiCtor } }).default.Midi;
 import type { Note, Score, TrackInfo } from '../types.ts';
 
 /** Lee un .mid y devuelve la partitura. Las pistas de percusión (canal 10) se marcan en el nombre. */

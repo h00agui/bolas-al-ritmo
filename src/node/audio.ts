@@ -1,11 +1,8 @@
 // Utilidades de audio para Node: decodificación con ffmpeg y carga de instrumentos con caché.
-import { execFile, execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { type Instrument, loadInstrument } from '../core/audio/instruments.ts';
-
-const execFileP = promisify(execFile);
 
 export function ffmpegPath(): string {
   return process.env.FFMPEG_PATH || 'ffmpeg';
@@ -22,15 +19,21 @@ export function decodeFileSync(file: string, sampleRate: number): Float32Array {
 }
 
 /** Decodifica un mp3 en memoria a PCM mono Float32 (mantiene el sampleRate original). */
-export async function decodeMp3(mp3: Uint8Array): Promise<{ data: Float32Array; sampleRate: number }> {
+export function decodeMp3(mp3: Uint8Array): Promise<{ data: Float32Array; sampleRate: number }> {
   const sampleRate = 44100;
-  const { stdout } = await execFileP(
-    ffmpegPath(),
-    ['-v', 'error', '-f', 'mp3', '-i', 'pipe:0', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1'],
-    { encoding: 'buffer', maxBuffer: 1 << 26, input: mp3 } as never,
-  );
-  const buf = stdout as unknown as Buffer;
-  return { data: new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4), sampleRate };
+  return new Promise((resolve, reject) => {
+    const ff = spawn(ffmpegPath(), ['-v', 'error', '-f', 'mp3', '-i', 'pipe:0', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1']);
+    const chunks: Buffer[] = [];
+    ff.stdout.on('data', (c: Buffer) => chunks.push(c));
+    ff.on('error', reject);
+    ff.on('close', (code) => {
+      if (code !== 0) return reject(new Error(`ffmpeg salió con código ${code}`));
+      const buf = Buffer.concat(chunks);
+      resolve({ data: new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)), sampleRate });
+    });
+    ff.stdin.on('error', () => {});
+    ff.stdin.end(mp3);
+  });
 }
 
 /** Carga un instrumento desde public/instruments, con caché del PCM decodificado en .cache/. */
