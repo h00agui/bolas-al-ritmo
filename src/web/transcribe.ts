@@ -89,7 +89,7 @@ export function transcribe(
       onsetThresh: opts.onsetThresh,
       frameThresh: 0.3,
       minNoteLen: opts.minNoteLen,
-      modelUrl: `${location.origin}${import.meta.env.BASE_URL}models/basic-pitch/model.json`,
+      modelUrl: new URL(`${import.meta.env.BASE_URL}models/basic-pitch/model.json`, location.href).href,
     };
     const forced = new URLSearchParams(location.search).get('backend');
     if (forced === 'cpu' || forced === 'webgl') req.backend = forced;

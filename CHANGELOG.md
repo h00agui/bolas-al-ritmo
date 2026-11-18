@@ -4,6 +4,7 @@
 
 Primera versión.
 
+- Aplicación de escritorio para Windows (Electron) con instalador, versión portable y actualizaciones automáticas desde las Releases de GitHub.
 - Web: subir MIDI o canción (conversión a MIDI con Basic Pitch en el navegador), elección de pistas y notas (melodía, acordes, bajo), tramo, velocidad y separación mínima.
 - Sonido: 14 instrumentos (FluidR3 GM), volumen, reverb y duración de las notas; vista previa con audio en vivo.
 - Modos visuales: Plataformas en descenso (cámara que sigue a la bola, plataformas con el color y el nombre de cada nota) y Aro.

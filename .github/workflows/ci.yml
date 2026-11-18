@@ -25,12 +25,15 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npx tsc -p electron/tsconfig.json
       - run: npm test
       - run: npm run build
       - name: Prueba de punta a punta en Chrome
         run: node tests/e2e/web.e2e.mjs
         env:
           CHROME_PATH: /usr/bin/google-chrome
+      - name: Aplicación de escritorio (arranque sin pantalla)
+        run: npm run app:prepare && xvfb-run -a node tests/e2e/app.smoke.mjs
       - name: Capturas y vídeo de la prueba
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,6 +41,7 @@ jobs:
           name: capturas
           path: |
             out/web_*.png
+            out/app_smoke.png
             out/web_export.mp4
           if-no-files-found: ignore
       - name: Web construida

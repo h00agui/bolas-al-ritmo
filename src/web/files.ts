@@ -25,8 +25,39 @@ function getDownloads(): Promise<ClaudeDownloads | null> {
 
 export type SaveResult = 'saved' | 'declined' | 'busy' | 'error';
 
-/** Ofrece un archivo al usuario. Dentro de Claude pide confirmación; fuera, descarga directa. */
+export interface DesktopBridge {
+  version: string;
+  saveFile(
+    name: string,
+    data: Uint8Array,
+  ): Promise<{ status: 'saved'; path: string } | { status: 'declined' }>;
+  showInFolder(path: string): Promise<void>;
+  openFile(): Promise<{ name: string; data: Uint8Array } | null>;
+  onMenu(cb: (action: string) => void): void;
+  onUpdate(cb: (text: string) => void): void;
+}
+
+/** Puente con la aplicación de escritorio (Electron), si la web corre dentro de ella. */
+export const desktop = (): DesktopBridge | null =>
+  (window as unknown as { bolasDesktop?: DesktopBridge }).bolasDesktop ?? null;
+
+/** Ruta donde se guardó el último archivo en la app de escritorio. */
+export let lastSavedPath = '';
+
+/** Ofrece un archivo al usuario. En la app de escritorio abre "Guardar como…"; dentro de Claude pide confirmación; en la web, descarga directa. */
 export async function saveFile(data: Blob | string, filename: string): Promise<SaveResult> {
+  const d = desktop();
+  if (d) {
+    const bytes =
+      typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(await data.arrayBuffer());
+    try {
+      const r = await d.saveFile(filename, bytes);
+      if (r.status === 'saved') lastSavedPath = r.path;
+      return r.status;
+    } catch {
+      return 'error';
+    }
+  }
   const dl = await getDownloads();
   if (dl) {
     try {

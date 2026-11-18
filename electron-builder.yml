@@ -1,0 +1,45 @@
+# Empaquetado de la aplicación de escritorio (electron-builder).
+appId: com.h00agui.bolasalritmo
+productName: Bolas al ritmo
+artifactName: ${productName}-Setup-${version}.${ext}
+copyright: Copyright © 2026 h00agui
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**
+  - electron/dist/**
+  - package.json
+  - '!dist/**/*.map'
+asar: true
+compression: normal
+publish:
+  provider: github
+  owner: h00agui
+  repo: bolas-al-ritmo
+  releaseType: release
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Bolas al ritmo
+  installerLanguages: [es_ES]
+  language: 3082
+  artifactName: ${productName}-Setup-${version}.${ext}
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}
+mac:
+  target: [dmg]
+  icon: build/icon.png
+  category: public.app-category.video
+linux:
+  target: [AppImage]
+  icon: build/icon.png
+  category: AudioVideo

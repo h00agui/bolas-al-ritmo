@@ -2,7 +2,18 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'public/', 'coverage/', '.cache/', 'out/'] },
+  {
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'public/',
+      'coverage/',
+      '.cache/',
+      'out/',
+      'electron/dist/',
+      'release/',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -13,7 +24,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs', 'tests/e2e/**/*.mjs'],
+    files: ['**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
+    files: ['scripts/**/*.mjs', 'tests/e2e/**/*.mjs', 'tests/e2e/**/*.cjs'],
     languageOptions: {
       globals: {
         process: 'readonly',
@@ -26,6 +41,9 @@ export default tseslint.config(
         window: 'readonly',
         document: 'readonly',
         btoa: 'readonly',
+        require: 'readonly',
+        module: 'writable',
+        __dirname: 'readonly',
       },
     },
   },

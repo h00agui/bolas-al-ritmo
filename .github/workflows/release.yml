@@ -1,0 +1,36 @@
+# Construye la aplicación de escritorio y la publica en la página de Releases.
+# Se lanza al subir una etiqueta de versión (git tag v0.2.0 && git push origin v0.2.0)
+# o a mano desde la pestaña Actions. La app instalada se actualiza sola desde esa página.
+name: Publicar aplicación de escritorio
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Instalador para Windows
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Construir y publicar en Releases
+        run: npm run app:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Instaladores (copia)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            release/*.exe
+            release/latest.yml

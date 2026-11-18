@@ -17,6 +17,15 @@ Vídeos verticales (TikTok, Reels, Shorts) de una bola que **toca una canción**
 
 Navegadores: Chrome y Edge crean el MP4 en segundos (WebCodecs). Si al navegador le falta algún codificador, la web graba el vídeo en tiempo real (tarda lo que dura el vídeo; hay que quedarse en la pestaña). La conversión a MIDI usa la GPU si está disponible.
 
+## Aplicación de escritorio (Windows)
+
+La misma web empaquetada con Electron, sin navegador ni instalación de Node: abre archivos y guarda vídeos con diálogos normales de Windows y se actualiza sola.
+
+- **Instalar**: descarga `Bolas-al-ritmo-Setup-<versión>.exe` de la página de [Releases](https://github.com/h00agui/bolas-al-ritmo/releases) y ejecútalo. Como el instalador no está firmado, Windows SmartScreen avisa la primera vez: _Más información → Ejecutar de todas formas_. También hay una versión portable (`-Portable-`) que no necesita instalación.
+- **Actualizar**: la app comprueba al arrancar si hay una versión nueva en Releases, la descarga y la instala al cerrar (también en _Ayuda → Buscar actualizaciones_).
+- **Publicar una versión nueva**: sube el número en `package.json`, haz commit y crea la etiqueta: `git tag v0.2.0 && git push origin main v0.2.0`. El workflow `release.yml` construye el instalador en un runner de Windows y lo publica en Releases.
+- **En desarrollo**: `npm run app` construye y abre la app; `npm run app:build` genera el instalador en `release/` (en Windows); `npm run test:app` la arranca sin pantalla y hace una captura.
+
 ## Desarrollo
 
 Requisitos: Node 20 o superior; `ffmpeg` en el PATH para el motor y las pruebas.
@@ -100,10 +109,11 @@ src/core/        núcleo compartido (sin DOM): midi/, music/, audio/, modes/, sc
 src/web/         la web (Vite): main.ts, audio.ts (reproducción), export.ts, transcribe.ts + worker, pianoroll.ts
 src/cli/         motor de render en Node
 src/node/        utilidades Node (ffmpeg, caché de instrumentos)
+electron/        aplicación de escritorio: main.ts (ventana, protocolo app://, diálogos, actualizaciones), preload.ts
 public/          instrumentos, modelo de transcripción (lo copia `npm run assets`), ejemplo, cabeceras
 scripts/         build-instruments.mjs, sync-assets.mjs, make-demo.ts
 tests/unit/      Vitest · tests/e2e/ Chrome sin pantalla
-.github/         CI (lint, tipos, pruebas, build, e2e) y despliegue
+.github/         CI (lint, tipos, pruebas, build, e2e), despliegue web y publicación de la app
 ```
 
 Licencia: privada (ver `LICENSE`). Componentes de terceros en `THIRD_PARTY.md`.

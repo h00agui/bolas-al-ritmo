@@ -13,7 +13,7 @@ import { VIDEO_H as H, VIDEO_W as W } from '@core/types.ts';
 import type { Hit, MusicSettings, Score, SoundSettings } from '@core/types.ts';
 import { LivePlayer, fetchInstrument } from './audio.ts';
 import { exportVideo, type ExportResult } from './export.ts';
-import { canShareFiles, saveFile, shareFile, slug, stripExt } from './files.ts';
+import { canShareFiles, desktop, lastSavedPath, saveFile, shareFile, slug, stripExt } from './files.ts';
 import { drawRoll, drawTicks } from './pianoroll.ts';
 import { DEFAULT_TRANSCRIBE, decodeForModel, transcribe, type TranscribeOptions } from './transcribe.ts';
 
@@ -272,6 +272,13 @@ async function runTranscription(name: string): Promise<void> {
     transcribing = false;
     busy('');
   }
+}
+async function openFromDesktop(): Promise<void> {
+  const f = await desktop()?.openFile();
+  if (!f) return;
+  const buf = f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.byteLength) as ArrayBuffer;
+  if (/\.midi?$/i.test(f.name)) await loadMidiFile(buf, f.name);
+  else await loadAudioFile(buf, f.name);
 }
 async function loadDemo(): Promise<void> {
   try {
@@ -696,6 +703,18 @@ function bind(): void {
       $('exportMsg').textContent = 'No se pudo compartir; usa “Guardar MP4”.';
   });
   $('saveProj').addEventListener('click', () => void saveProject());
+  $('openFolder').addEventListener('click', () => void desktop()?.showInFolder(lastSavedPath));
+  const d = desktop();
+  if (d) {
+    document.body.classList.add('desktop');
+    d.onMenu((action) => {
+      if (action === 'save-project') void saveProject();
+      if (action === 'open') void openFromDesktop();
+    });
+    d.onUpdate((text) => ($('statusText').textContent = text));
+    $('openAny').hidden = false;
+    $('openAny').addEventListener('click', () => void openFromDesktop());
+  }
   $('loadProj').addEventListener('change', (e) => {
     const input = e.target as HTMLInputElement;
     const f = input.files?.[0];
