@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.1.2 — 2026-11-18
+
+- Publicación de la app en una sola release por versión (la 0.1.1 quedó duplicada por una carrera al publicar).
+
 ## 0.1.1 — 2026-11-18
 
 - Corregido: la aplicación de escritorio no arrancaba ("Cannot find module 'electron-updater'"): el módulo de actualizaciones no se incluía en el paquete.
