@@ -1,7 +1,8 @@
 # Empaquetado de la aplicación de escritorio (electron-builder).
 appId: com.h00agui.bolasalritmo
 productName: Bolas al ritmo
-artifactName: ${productName}-Setup-${version}.${ext}
+# sin espacios: GitHub los cambiaría por puntos y el actualizador no encontraría el archivo
+artifactName: Bolas-al-ritmo-Setup-${version}.${ext}
 copyright: Copyright © 2026 h00agui
 directories:
   buildResources: build
@@ -32,9 +33,9 @@ nsis:
   shortcutName: Bolas al ritmo
   installerLanguages: [es_ES]
   language: 3082
-  artifactName: ${productName}-Setup-${version}.${ext}
+  artifactName: Bolas-al-ritmo-Setup-${version}.${ext}
 portable:
-  artifactName: ${productName}-Portable-${version}.${ext}
+  artifactName: Bolas-al-ritmo-Portable-${version}.${ext}
 mac:
   target: [dmg]
   icon: build/icon.png
