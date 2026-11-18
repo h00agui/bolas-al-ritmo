@@ -34,10 +34,18 @@ jobs:
             git push origin "$v"
           fi
           echo "VERSION_TAG=$v" >> "$GITHUB_ENV"
-      - name: Construir y publicar en Releases
-        run: npm run app:publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir el instalador
+        run: npm run app:build
+      - name: Publicar en Releases (una sola release con todos los archivos)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION_TAG }}
+          name: ${{ env.VERSION_TAG }}
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
       - name: Instaladores (copia)
         uses: actions/upload-artifact@v4
         with:

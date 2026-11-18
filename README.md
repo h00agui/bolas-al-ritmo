@@ -23,7 +23,7 @@ La misma web empaquetada con Electron, sin navegador ni instalación de Node: ab
 
 - **Instalar**: descarga `Bolas-al-ritmo-Setup-<versión>.exe` de la página de [Releases](https://github.com/h00agui/bolas-al-ritmo/releases) y ejecútalo. Como el instalador no está firmado, Windows SmartScreen avisa la primera vez: _Más información → Ejecutar de todas formas_. También hay una versión portable (`-Portable-`) que no necesita instalación.
 - **Actualizar**: la app comprueba al arrancar si hay una versión nueva en Releases, la descarga y la instala al cerrar (también en _Ayuda → Buscar actualizaciones_).
-- **Publicar una versión nueva**: sube el número en `package.json`, haz commit y crea la etiqueta: `git tag v0.2.0 && git push origin main v0.2.0`. El workflow `release.yml` construye el instalador en un runner de Windows y lo publica en Releases.
+- **Publicar una versión nueva**: sube el número en `package.json`, haz commit y crea la etiqueta: `git tag v0.2.0 && git push origin main v0.2.0`. El workflow `release.yml` construye el instalador en un runner de Windows y lo publica en Releases (también se puede lanzar a mano desde la pestaña _Actions_; crea la etiqueta él mismo).
 - **En desarrollo**: `npm run app` construye y abre la app; `npm run app:build` genera el instalador en `release/` (en Windows); `npm run test:app` la arranca sin pantalla y hace una captura.
 
 ## Desarrollo
