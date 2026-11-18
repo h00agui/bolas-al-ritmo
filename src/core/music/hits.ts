@@ -64,7 +64,11 @@ export function scoreToHits(score: Score, settings: Partial<MusicSettings> = {})
       default:
         chosen = g;
     }
-    const hitNotes: HitNote[] = chosen.map((n) => ({ midi: n.midi, velocity: n.velocity, duration: n.duration / s.speed }));
+    const hitNotes: HitNote[] = chosen.map((n) => ({
+      midi: n.midi,
+      velocity: n.velocity,
+      duration: n.duration / s.speed,
+    }));
     const last = hits[hits.length - 1];
     if (last && t - last.t < s.minGap) {
       // demasiado seguido: se une al choque anterior (sin repetir alturas) y se descarta su tiempo
@@ -73,7 +77,10 @@ export function scoreToHits(score: Score, settings: Partial<MusicSettings> = {})
       }
       continue;
     }
-    const strength = Math.min(1, 0.35 + 0.65 * Math.max(...hitNotes.map((n) => n.velocity)) + 0.08 * (hitNotes.length - 1));
+    const strength = Math.min(
+      1,
+      0.35 + 0.65 * Math.max(...hitNotes.map((n) => n.velocity)) + 0.08 * (hitNotes.length - 1),
+    );
     hits.push({ t: +t.toFixed(4), notes: hitNotes, strength: +strength.toFixed(3) });
   }
   return hits;

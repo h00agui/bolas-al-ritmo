@@ -22,14 +22,31 @@ export function decodeFileSync(file: string, sampleRate: number): Float32Array {
 export function decodeMp3(mp3: Uint8Array): Promise<{ data: Float32Array; sampleRate: number }> {
   const sampleRate = 44100;
   return new Promise((resolve, reject) => {
-    const ff = spawn(ffmpegPath(), ['-v', 'error', '-f', 'mp3', '-i', 'pipe:0', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1']);
+    const ff = spawn(ffmpegPath(), [
+      '-v',
+      'error',
+      '-f',
+      'mp3',
+      '-i',
+      'pipe:0',
+      '-ac',
+      '1',
+      '-ar',
+      String(sampleRate),
+      '-f',
+      'f32le',
+      'pipe:1',
+    ]);
     const chunks: Buffer[] = [];
     ff.stdout.on('data', (c: Buffer) => chunks.push(c));
     ff.on('error', reject);
     ff.on('close', (code) => {
       if (code !== 0) return reject(new Error(`ffmpeg salió con código ${code}`));
       const buf = Buffer.concat(chunks);
-      resolve({ data: new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)), sampleRate });
+      resolve({
+        data: new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)),
+        sampleRate,
+      });
     });
     ff.stdin.on('error', () => {});
     ff.stdin.end(mp3);
@@ -55,7 +72,10 @@ export async function loadInstrumentNode(id: string, root = process.cwd()): Prom
         const samples = new Map<number, Float32Array>();
         let off = 0;
         for (const n of meta.notes) {
-          samples.set(n.midi, new Float32Array(pcm.buffer.slice(pcm.byteOffset + off, pcm.byteOffset + off + n.length * 4)));
+          samples.set(
+            n.midi,
+            new Float32Array(pcm.buffer.slice(pcm.byteOffset + off, pcm.byteOffset + off + n.length * 4)),
+          );
           off += n.length * 4;
         }
         return { id, sampleRate: meta.sampleRate, samples, midis: [...samples.keys()].sort((a, b) => a - b) };
@@ -68,7 +88,15 @@ export async function loadInstrumentNode(id: string, root = process.cwd()): Prom
   fs.writeFileSync(cacheFile, JSON.stringify({ mtime: stat.mtimeMs, sampleRate: inst.sampleRate, notes }));
   fs.writeFileSync(
     cacheFile.replace(/\.json$/, '.f32'),
-    Buffer.concat(inst.midis.map((m) => Buffer.from(inst.samples.get(m)!.buffer, inst.samples.get(m)!.byteOffset, inst.samples.get(m)!.byteLength))),
+    Buffer.concat(
+      inst.midis.map((m) =>
+        Buffer.from(
+          inst.samples.get(m)!.buffer,
+          inst.samples.get(m)!.byteOffset,
+          inst.samples.get(m)!.byteLength,
+        ),
+      ),
+    ),
   );
   return inst;
 }

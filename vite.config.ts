@@ -11,8 +11,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          tfjs: ['@tensorflow/tfjs', '@spotify/basic-pitch'],
+        manualChunks(id) {
+          if (id.includes('@tensorflow') || id.includes('@spotify/basic-pitch')) return 'tfjs';
+          return undefined;
         },
       },
     },

@@ -29,7 +29,10 @@ export interface PackIndex {
 }
 
 /** Separa un .pack en su índice y los bytes de cada nota. */
-export function readPack(bytes: ArrayBuffer | Uint8Array): { index: PackIndex; blobs: Map<number, Uint8Array> } {
+export function readPack(bytes: ArrayBuffer | Uint8Array): {
+  index: PackIndex;
+  blobs: Map<number, Uint8Array>;
+} {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const magic = String.fromCharCode(u8[0], u8[1], u8[2], u8[3]);
   if (magic !== 'BAR1') throw new Error('Pack de instrumento no válido');

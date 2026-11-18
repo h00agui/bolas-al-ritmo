@@ -52,7 +52,11 @@ export async function renderHits(
       const gr = gain * Math.sin(((pan + 1) * Math.PI) / 4);
       const hold = noteHold(note.duration, sound.sustain);
       const start = Math.round(hit.t * sampleRate);
-      const total = Math.min(Math.round((hold + release) * sampleRate), Math.floor((src.length - 2) / rate), n - start);
+      const total = Math.min(
+        Math.round((hold + release) * sampleRate),
+        Math.floor((src.length - 2) / rate),
+        n - start,
+      );
       const relStart = Math.round(hold * sampleRate);
       for (let i = 0; i < total; i++) {
         const pos = i * rate;

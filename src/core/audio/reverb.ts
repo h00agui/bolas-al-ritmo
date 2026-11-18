@@ -11,7 +11,12 @@ function mulberry32(seed: number) {
 }
 
 /** Respuesta al impulso estéreo: ruido con caída exponencial, filtro paso bajo suave y pre-delay. */
-export function makeImpulseResponse(sampleRate: number, seconds = 1.6, decay = 0.45, seed = 7): [Float32Array, Float32Array] {
+export function makeImpulseResponse(
+  sampleRate: number,
+  seconds = 1.6,
+  decay = 0.45,
+  seed = 7,
+): [Float32Array, Float32Array] {
   const n = Math.round(seconds * sampleRate);
   const pre = Math.round(0.012 * sampleRate);
   const out: [Float32Array, Float32Array] = [new Float32Array(n + pre), new Float32Array(n + pre)];
@@ -37,7 +42,10 @@ export function makeImpulseResponse(sampleRate: number, seconds = 1.6, decay = 0
  * Convolución por bloques (overlap-add) de una señal mono con una IR estéreo.
  * Devuelve dos canales de la misma longitud que la entrada.
  */
-export function convolveStereo(input: Float32Array, ir: [Float32Array, Float32Array]): [Float32Array, Float32Array] {
+export function convolveStereo(
+  input: Float32Array,
+  ir: [Float32Array, Float32Array],
+): [Float32Array, Float32Array] {
   const M = ir[0].length;
   const block = 32768;
   const size = nextPow2(block + M - 1);

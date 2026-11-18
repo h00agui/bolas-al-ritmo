@@ -62,7 +62,10 @@ function melBank(sr: number, nfft: number, nMels: number) {
 }
 
 /** Analiza audio mono a ANALYSIS_SR. ~1 s por minuto de audio. */
-export async function analyzeAudio(mono: Float32Array, onProgress?: (p: number) => void | Promise<void>): Promise<AudioAnalysis> {
+export async function analyzeAudio(
+  mono: Float32Array,
+  onProgress?: (p: number) => void | Promise<void>,
+): Promise<AudioAnalysis> {
   const sr = ANALYSIS_SR;
   const half = N_FFT / 2;
   const n = mono.length;
@@ -104,7 +107,10 @@ export async function analyzeAudio(mono: Float32Array, onProgress?: (p: number) 
   const shift = N_FFT / (2 * HOP);
   const env = {} as Record<Band, Float32Array>;
   for (const [name, [lo, hi]] of Object.entries(BANDS) as [Band, [number, number]][]) {
-    const ms = bank.map((b, i) => [b.center, i] as const).filter(([c]) => c >= lo && c < hi).map(([, i]) => i);
+    const ms = bank
+      .map((b, i) => [b.center, i] as const)
+      .filter(([c]) => c >= lo && c < hi)
+      .map(([, i]) => i);
     const e = new Float32Array(frames);
     for (let f = 1; f < frames; f++) {
       let s = 0;
@@ -183,5 +189,7 @@ export function detectOnsets(analysis: AudioAnalysis, opts: OnsetOptions = {}): 
   for (const h of hits) if (!out.length || h.t - out[out.length - 1].t >= minGap) out.push(h);
   const ss = out.map((h) => h.s).sort((p, q) => p - q);
   const p95 = ss[Math.floor(ss.length * 0.95)] || 1;
-  return out.filter((h) => h.t >= 0).map((h) => ({ t: +h.t.toFixed(4), s: +Math.min(1, h.s / p95).toFixed(3) }));
+  return out
+    .filter((h) => h.t >= 0)
+    .map((h) => ({ t: +h.t.toFixed(4), s: +Math.min(1, h.s / p95).toFixed(3) }));
 }

@@ -26,12 +26,19 @@ export function oklch(L: number, C: number, h: number): RGB {
 
 export function hexToRgb(hex: string): RGB {
   const h = String(hex).replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.padEnd(6, '0');
+  const full =
+    h.length === 3
+      ? h
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : h.padEnd(6, '0');
   const v = parseInt(full, 16);
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-export const rgbToHex = (c: RGB): string => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+export const rgbToHex = (c: RGB): string =>
+  '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 
 export const mix = (a: RGB, b: RGB, f: number): RGB => a.map((v, i) => v + (b[i] - v) * f) as RGB;
 
@@ -53,8 +60,14 @@ export const PALETTES: Record<string, Palette> = {
   arcoiris: { name: 'Arcoíris', at: (k) => oklch(0.77, 0.2, (20 + GOLD * k) % 360) },
   neon: { name: 'Neón', at: (k) => oklch(0.83, 0.32, (330 + GOLD * k) % 360) },
   pastel: { name: 'Pastel', at: (k) => oklch(0.88, 0.09, (20 + GOLD * k) % 360) },
-  fuego: { name: 'Fuego', at: (k) => oklch([0.72, 0.8, 0.88, 0.68, 0.84][k % 5], 0.2, [28, 48, 88, 18, 62][k % 5]) },
-  hielo: { name: 'Hielo', at: (k) => oklch([0.82, 0.74, 0.9, 0.7, 0.86][k % 5], 0.13, [205, 235, 190, 265, 220][k % 5]) },
+  fuego: {
+    name: 'Fuego',
+    at: (k) => oklch([0.72, 0.8, 0.88, 0.68, 0.84][k % 5], 0.2, [28, 48, 88, 18, 62][k % 5]),
+  },
+  hielo: {
+    name: 'Hielo',
+    at: (k) => oklch([0.82, 0.74, 0.9, 0.7, 0.86][k % 5], 0.13, [205, 235, 190, 265, 220][k % 5]),
+  },
   personalizada: {
     name: 'Mis colores',
     at: (k, custom) => hexToRgb(custom.length ? custom[k % custom.length] : '#ffffff'),

@@ -43,7 +43,8 @@ describe('scoreToHits', () => {
 
   it('respeta la separación mínima uniendo notas demasiado seguidas', () => {
     const hits = scoreToHits(demo, { selection: 'chords', duration: 0, minGap: 0.35 });
-    for (let i = 1; i < hits.length; i++) expect(hits[i].t - hits[i - 1].t).toBeGreaterThanOrEqual(0.35 - 1e-6);
+    for (let i = 1; i < hits.length; i++)
+      expect(hits[i].t - hits[i - 1].t).toBeGreaterThanOrEqual(0.35 - 1e-6);
   });
 
   it('recorta por tiempo y aplica velocidad', () => {

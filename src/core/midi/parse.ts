@@ -58,7 +58,8 @@ export function writeMidi(notes: Note[], name = 'Bolas al ritmo', bpm = 120): Ui
   }
   for (const [, list] of [...byTrack.entries()].sort((a, b) => a[0] - b[0])) {
     const track = midi.addTrack();
-    for (const n of list) track.addNote({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity });
+    for (const n of list)
+      track.addNote({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity });
   }
   return midi.toArray();
 }
