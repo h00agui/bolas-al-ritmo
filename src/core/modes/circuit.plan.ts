@@ -483,8 +483,10 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): Float32Array {
       const p = ballAtPlan(b, plan, Math.max(t, b.pre.tRel));
       list.push(p[0], p[1], p[2], plan.r + 0.45);
       const k = lastIndex(b.T, t);
+      // la pieza siguiente solo cuenta si la bola va a llegar pronto (si no, el encuadre se abre de más)
       for (const j of [k + 1, k + 2])
-        if (j >= 0 && j < b.T.length) list.push(b.P[j][0], b.P[j][1], b.P[j][2], j === k + 1 ? 0.5 : 0.3);
+        if (j >= 0 && j < b.T.length && b.T[j] - t < (j === k + 1 ? 1.5 : 0.8))
+          list.push(b.P[j][0], b.P[j][1], b.P[j][2], j === k + 1 ? 0.5 : 0.3);
     }
     if (!list.length) {
       if (i > 0) list = pts[i - 1];
