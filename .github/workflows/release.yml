@@ -23,6 +23,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Etiqueta de versión (v<versión de package.json>, si no existe)
+        shell: bash
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          if ! git ls-remote --tags origin "refs/tags/$v" | grep -q "$v"; then
+            git tag -a "$v" -m "Bolas al ritmo $v"
+            git push origin "$v"
+          fi
+          echo "VERSION_TAG=$v" >> "$GITHUB_ENV"
       - name: Construir y publicar en Releases
         run: npm run app:publish
         env:
