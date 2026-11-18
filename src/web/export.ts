@@ -4,7 +4,7 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import { renderHits } from '@core/audio/sampler.ts';
 import type { Instrument } from '@core/audio/instruments.ts';
 import type { Mode } from '@core/modes/index.ts';
-import type { DrawEnv } from '@core/scene/draw.ts';
+import { prepareHud, type DrawEnv } from '@core/scene/draw.ts';
 import type { SceneStyle } from '@core/scene/style.ts';
 import { FPS, SAMPLE_RATE, VIDEO_H as H, VIDEO_W as W } from '@core/types.ts';
 import type { Hit, SoundSettings } from '@core/types.ts';
@@ -19,6 +19,7 @@ export interface ExportJob {
   sound: SoundSettings;
   onProgress: (p: number, text: string) => void;
   isCancelled: () => boolean;
+  loadImage?: DrawEnv['loadImage'];
 }
 
 export interface ExportResult {
@@ -120,7 +121,9 @@ async function exportWebCodecs(
   await aenc.flush();
   const c = makeCanvas(W, H);
   const x = c.getContext('2d', { alpha: false })!;
-  const env: DrawEnv = { makeCanvas, cache: {}, fps: FPS };
+  const env: DrawEnv = { makeCanvas, cache: {}, fps: FPS, loadImage: job.loadImage };
+  await job.mode.prepare?.(env);
+  await prepareHud(job.style, env);
   const t0 = performance.now();
   for (let i = 0; i < nF; i++) {
     if (job.isCancelled()) throw new Error('cancel');
@@ -161,7 +164,9 @@ async function exportRealtime(job: ExportJob, ctx: AudioContext): Promise<Export
   c.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
   document.body.appendChild(c);
   const x = c.getContext('2d')!;
-  const env: DrawEnv = { makeCanvas, cache: {}, fps: 60 };
+  const env: DrawEnv = { makeCanvas, cache: {}, fps: 60, loadImage: job.loadImage };
+  await job.mode.prepare?.(env);
+  await prepareHud(job.style, env);
   job.mode.draw(x, 0, job.plan, job.style, env);
   const ab = ctx.createBuffer(2, L.length, SAMPLE_RATE);
   ab.copyToChannel(L as Float32Array<ArrayBuffer>, 0);

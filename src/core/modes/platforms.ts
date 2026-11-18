@@ -489,7 +489,7 @@ export function drawPlatforms(ctx: Ctx, t: number, plan: PlatformsPlan, st: Scen
     blend: FX,
   });
 
-  drawHud(ctx, st);
+  drawHud(ctx, st, env);
   // contador arriba a la derecha
   if (st.counter) {
     ctx.globalCompositeOperation = 'source-over';

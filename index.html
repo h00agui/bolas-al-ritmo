@@ -175,6 +175,31 @@
             <label for="palette">Paleta</label
             ><select id="palette"></select>
           </div>
+          <div class="row two">
+            <label for="textStyle">Rótulos</label>
+            <select id="textStyle">
+              <option value="simple">Centrados</option>
+              <option value="etiqueta">Etiqueta arriba a la izquierda (cursiva)</option>
+            </select>
+          </div>
+          <div class="row two">
+            <label>Logo</label>
+            <div class="btns" style="padding: 0">
+              <label class="btn file"
+                >Subir imagen<input
+                  type="file"
+                  id="logoFile"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              /></label>
+              <button class="btn" type="button" id="logoClear" hidden>Quitar</button>
+            </div>
+          </div>
+          <div class="row" id="logoSizeRow" hidden>
+            <label for="logoSize">Tamaño del logo</label
+            ><input type="range" id="logoSize" min="0.15" max="0.9" step="0.01" /><output
+              id="logoSizeV"
+            ></output>
+          </div>
           <div class="row two" id="customRow" hidden>
             <label>Mis colores</label>
             <div class="swatches">
@@ -194,6 +219,77 @@
         <div class="panel wide">
           <h2>Ajustes de la escena</h2>
           <div class="grid2">
+            <div data-mode="platforms3d" class="row two">
+              <label for="floorColor">Color del suelo</label>
+              <div class="swatches"><input type="color" id="floorColor" /></div>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="material3d">Material</label
+              ><select id="material3d">
+                <option value="cromo">Cromo</option>
+                <option value="color">Color de la nota</option>
+                <option value="mate">Blanco mate</option>
+              </select>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="cameraAzimuth">Giro de cámara</label
+              ><input type="range" id="cameraAzimuth" min="-80" max="80" step="1" /><output
+                id="cameraAzimuthV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="cameraElevation">Altura de cámara</label
+              ><input type="range" id="cameraElevation" min="30" max="80" step="1" /><output
+                id="cameraElevationV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="cameraDistance">Distancia</label
+              ><input type="range" id="cameraDistance" min="5" max="16" step="0.5" /><output
+                id="cameraDistanceV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="lightAngle">Dirección de la luz</label
+              ><input type="range" id="lightAngle" min="-180" max="180" step="5" /><output
+                id="lightAngleV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="shadowSoftness">Sombras suaves</label
+              ><input type="range" id="shadowSoftness" min="0" max="1" step="0.05" /><output
+                id="shadowSoftnessV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="pace3d">Avance</label
+              ><input type="range" id="pace3d" min="1" max="5" step="0.1" /><output id="pace3dV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="spread3d">Anchura del camino</label
+              ><input type="range" id="spread3d" min="0.5" max="4" step="0.1" /><output
+                id="spread3dV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="tileSize">Tamaño de placa</label
+              ><input type="range" id="tileSize" min="0.6" max="1.6" step="0.05" /><output
+                id="tileSizeV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="ballSize3d">Tamaño de bola</label
+              ><input type="range" id="ballSize3d" min="0.1" max="0.4" step="0.01" /><output
+                id="ballSize3dV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="recoil">Rebote de placa</label
+              ><input type="range" id="recoil" min="0" max="2" step="0.1" /><output id="recoilV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="heightByPitch">Agudos más altos</label><input type="checkbox" id="heightByPitch" />
+            </div>
             <div data-mode="platforms" class="row">
               <label for="platformLength">Ancho de plataforma</label
               ><input type="range" id="platformLength" min="60" max="260" step="5" /><output
@@ -239,13 +335,13 @@
               <label for="ringColor">Color del aro</label>
               <div class="swatches"><input type="color" id="ringColor" /></div>
             </div>
-            <div class="row">
+            <div data-mode="platforms ring" class="row">
               <label for="ballStart">Bola al empezar</label
               ><input type="range" id="ballStart" min="10" max="80" step="1" /><output
                 id="ballStartV"
               ></output>
             </div>
-            <div class="row">
+            <div data-mode="platforms ring" class="row">
               <label for="ballEnd">Bola al final</label
               ><input type="range" id="ballEnd" min="10" max="200" step="1" /><output id="ballEndV"></output>
             </div>
@@ -259,24 +355,24 @@
               <label for="chaos">Rebote loco</label
               ><input type="range" id="chaos" min="0" max="1" step="0.05" /><output id="chaosV"></output>
             </div>
-            <div class="row">
+            <div data-mode="platforms ring" class="row">
               <label for="trail">Estela</label
               ><input type="range" id="trail" min="0" max="0.6" step="0.01" /><output id="trailV"></output>
             </div>
-            <div class="row">
+            <div data-mode="platforms ring" class="row">
               <label for="particles">Chispas</label
               ><input type="range" id="particles" min="0" max="2.5" step="0.1" /><output
                 id="particlesV"
               ></output>
             </div>
-            <div class="row">
+            <div data-mode="platforms ring" class="row">
               <label for="glow">Brillo</label
               ><input type="range" id="glow" min="0" max="2" step="0.05" /><output id="glowV"></output>
             </div>
-            <div class="row two">
+            <div data-mode="platforms ring" class="row two">
               <label for="outline">Borde blanco en la bola</label><input type="checkbox" id="outline" />
             </div>
-            <div class="row two">
+            <div data-mode="platforms ring" class="row two">
               <label>Fondo</label>
               <div class="swatches">
                 <input type="color" id="bgTop" aria-label="Fondo arriba" /><input

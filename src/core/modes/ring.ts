@@ -337,7 +337,7 @@ export function drawRing(ctx: Ctx, t: number, plan: RingPlan, st: SceneStyle, en
     style: st,
     blend: FX,
   });
-  drawHud(ctx, st, false);
+  drawHud(ctx, st, env, false);
   ctx.restore();
 }
 

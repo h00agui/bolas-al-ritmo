@@ -16,6 +16,45 @@ export interface DrawEnv {
   makeCanvas: (w: number, h: number) => CanvasLike;
   cache: Record<string, unknown>;
   fps: number;
+  /** Carga una imagen (logo) desde una data URL; cada entorno pone la suya. */
+  loadImage?: (src: string) => Promise<CanvasImageSource & { width: number; height: number }>;
+}
+
+type LogoImage = CanvasImageSource & { width: number; height: number };
+
+/** Logo ya cargado para este estilo, o null (y dispara la carga si hay cargador). */
+function logoFor(style: SceneStyle, env?: DrawEnv): LogoImage | null {
+  if (!style.logo || !env) return null;
+  const cache = env.cache as { logoSrc?: string; logoImg?: LogoImage | null; logoLoading?: string };
+  if (cache.logoSrc === style.logo) return cache.logoImg ?? null;
+  if (env.loadImage && cache.logoLoading !== style.logo) {
+    cache.logoLoading = style.logo;
+    const src = style.logo;
+    env
+      .loadImage(src)
+      .then((img) => {
+        cache.logoSrc = src;
+        cache.logoImg = img;
+      })
+      .catch(() => {
+        cache.logoSrc = src;
+        cache.logoImg = null;
+      });
+  }
+  return null;
+}
+
+/** Deja el logo cargado antes de exportar (el dibujo es síncrono). */
+export async function prepareHud(style: SceneStyle, env: DrawEnv): Promise<void> {
+  if (!style.logo || !env.loadImage) return;
+  const cache = env.cache as { logoSrc?: string; logoImg?: LogoImage | null };
+  if (cache.logoSrc === style.logo) return;
+  try {
+    cache.logoImg = await env.loadImage(style.logo);
+  } catch {
+    cache.logoImg = null;
+  }
+  cache.logoSrc = style.logo;
 }
 
 export const FONT = 'Inter, "Inter Tight", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -51,10 +90,15 @@ export function background(style: SceneStyle, env: DrawEnv, extra = ''): CanvasL
   return c;
 }
 
-/** Textos fijos (título, subtítulo, usuario) sobre bandas degradadas para que se lean encima de la escena. */
-export function drawHud(x: Ctx, style: SceneStyle, bands = true): void {
+/** Textos fijos (título, subtítulo, usuario) y logo encima de la escena. */
+export function drawHud(x: Ctx, style: SceneStyle, env?: DrawEnv, bands = true): void {
   x.globalCompositeOperation = 'source-over';
   x.globalAlpha = 1;
+  const logo = logoFor(style, env);
+  if (style.textStyle === 'etiqueta') {
+    drawLabelHud(x, style, logo);
+    return;
+  }
   if (bands && (style.title || style.subtitle)) {
     const top = hexToRgb(style.bgTop);
     const g = x.createLinearGradient(0, 0, 0, 420);
@@ -72,22 +116,75 @@ export function drawHud(x: Ctx, style: SceneStyle, bands = true): void {
     x.fillStyle = g;
     x.fillRect(0, H - 300, W, 300);
   }
-  drawTexts(x, style);
+  let y0 = 0;
+  if (logo) {
+    const lw = Math.min(W - 120, style.logoSize * W);
+    const lh = (lw * logo.height) / logo.width;
+    x.drawImage(logo, (W - lw) / 2, 110, lw, lh);
+    y0 = 110 + lh + 70;
+  }
+  drawTexts(x, style, y0);
 }
 
-export function drawTexts(x: Ctx, style: SceneStyle): void {
+/** Estilo "etiqueta": logo y rótulos en píldoras oscuras arriba a la izquierda, texto en cursiva. */
+function drawLabelHud(x: Ctx, style: SceneStyle, logo: LogoImage | null): void {
+  const tc = hexToRgb(style.textColor);
+  let y = 120;
+  const left = 56;
+  if (logo) {
+    const lw = Math.min(W - 2 * left, style.logoSize * W);
+    const lh = (lw * logo.height) / logo.width;
+    x.drawImage(logo, left, y, lw, lh);
+    y += lh + 34;
+  }
+  const pill = (text: string, size: number) => {
+    x.font = `italic 800 ${size}px ${FONT}`;
+    x.textAlign = 'left';
+    x.textBaseline = 'middle';
+    const tw = Math.min(x.measureText(text).width, W - 2 * left - 60);
+    const h = size * 1.55;
+    x.fillStyle = 'rgba(12,12,18,0.55)';
+    x.beginPath();
+    x.roundRect(left, y, tw + 60, h, 18);
+    x.fill();
+    x.fillStyle = rgba(tc, 1);
+    x.shadowColor = 'rgba(0,0,0,0.5)';
+    x.shadowBlur = 8;
+    x.shadowOffsetY = 3;
+    x.fillText(text, left + 30, y + h / 2 + size * 0.04, W - 2 * left - 60);
+    x.shadowColor = 'transparent';
+    x.shadowBlur = 0;
+    x.shadowOffsetY = 0;
+    y += h + 18;
+  };
+  if (style.title) pill(style.title, 58);
+  if (style.subtitle) pill(style.subtitle, 40);
+  if (style.handle) {
+    x.font = `600 40px ${FONT}`;
+    x.textAlign = 'center';
+    x.textBaseline = 'alphabetic';
+    x.fillStyle = rgba(tc, 0.75);
+    x.shadowColor = 'rgba(0,0,0,0.5)';
+    x.shadowBlur = 8;
+    x.fillText(style.handle, W / 2, H - 150, W - 100);
+    x.shadowColor = 'transparent';
+    x.shadowBlur = 0;
+  }
+}
+
+export function drawTexts(x: Ctx, style: SceneStyle, yOffset = 0): void {
   const tc = hexToRgb(style.textColor);
   x.textAlign = 'center';
   x.textBaseline = 'alphabetic';
   if (style.title) {
     x.fillStyle = rgba(tc, 1);
     x.font = `800 92px ${FONT}`;
-    x.fillText(style.title, W / 2, 230, W - 100);
+    x.fillText(style.title, W / 2, 230 + yOffset, W - 100);
   }
   if (style.subtitle) {
     x.fillStyle = rgba(tc, 0.6);
     x.font = `500 44px ${FONT}`;
-    x.fillText(style.subtitle, W / 2, style.title ? 300 : 230, W - 100);
+    x.fillText(style.subtitle, W / 2, (style.title ? 300 : 230) + yOffset, W - 100);
   }
   if (style.handle) {
     x.fillStyle = rgba(tc, 0.7);

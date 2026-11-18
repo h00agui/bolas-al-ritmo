@@ -15,7 +15,7 @@ Vídeos verticales (TikTok, Reels, Shorts) de una bola que **toca una canción**
 3. **Escena**: modo _Plataformas_ o _Aro_, colores por nota o por paleta, tamaños, gravedad, estela, chispas, fondo, textos (título, artista, tu @usuario), nombre de las notas y contador.
 4. **Descargar**: _Crear vídeo MP4_ (1080×1920, 30 fps). Después _Guardar MP4_ o, en el móvil, _Compartir…_ para mandarlo a TikTok. _Guardar proyecto_ deja un `.json` con todos los ajustes; _Descargar MIDI_ guarda la transcripción.
 
-Navegadores: Chrome y Edge crean el MP4 en segundos (WebCodecs). Si al navegador le falta algún codificador, la web graba el vídeo en tiempo real (tarda lo que dura el vídeo; hay que quedarse en la pestaña). La conversión a MIDI usa la GPU si está disponible.
+Navegadores: Chrome y Edge crean el MP4 en segundos (WebCodecs); el modo 3D tarda más (dibuja con la tarjeta gráfica fotograma a fotograma). Si al navegador le falta algún codificador, la web graba el vídeo en tiempo real (tarda lo que dura el vídeo; hay que quedarse en la pestaña). La conversión a MIDI usa la GPU si está disponible.
 
 ## Aplicación de escritorio (Windows)
 
@@ -48,7 +48,7 @@ npm run render -- --midi cancion.mid --project proyecto.json --out video.mp4   #
 npm run render -- --midi cancion.mid --stills 1.5,10,20 --out revision          # fotogramas PNG para revisar
 ```
 
-Opciones: `--mode platforms|ring`, `--instrument <id>` (ver `src/core/audio/catalog.js`), `--selection melody|chords|bass`, `--start`, `--duration`, `--speed`, `--min-gap`, `--title`, `--subtitle`, `--handle`, `--palette`, `--color-mode nota|paleta`.
+Opciones: `--mode platforms|ring` (el modo 3D se exporta desde la web o la app), `--instrument <id>` (ver `src/core/audio/catalog.js`), `--selection melody|chords|bass`, `--start`, `--duration`, `--speed`, `--min-gap`, `--title`, `--subtitle`, `--handle`, `--palette`, `--color-mode nota|paleta`.
 
 ## Cómo funciona
 

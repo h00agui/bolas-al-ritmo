@@ -7,7 +7,7 @@ import { PALETTES, hexToRgb, luminance, rgbToHex } from '@core/color.ts';
 import { parseMidi, writeMidi } from '@core/midi/parse.ts';
 import { MODES, getMode } from '@core/modes/index.ts';
 import { buildProject, defaultProject, normalizeProject, planChanged, type Project } from '@core/project.ts';
-import type { CanvasLike, DrawEnv } from '@core/scene/draw.ts';
+import { prepareHud, type CanvasLike, type DrawEnv } from '@core/scene/draw.ts';
 import { DEFAULT_STYLE, type SceneStyle } from '@core/scene/style.ts';
 import { VIDEO_H as H, VIDEO_W as W } from '@core/types.ts';
 import type { Hit, MusicSettings, Score, SoundSettings } from '@core/types.ts';
@@ -124,7 +124,30 @@ const makeCanvas = (w: number, h: number): CanvasLike => {
   c.height = h;
   return c;
 };
-const previewEnv: DrawEnv = { makeCanvas, cache: {}, fps: 60 };
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('imagen'));
+    img.src = src;
+  });
+const previewEnv: DrawEnv = { makeCanvas, cache: {}, fps: 60, loadImage };
+let preparing: Promise<void> | null = null;
+/** Carga lo que necesite el modo actual (WebGL) y el logo; vuelve a dibujar al terminar. */
+function prepareMode(): Promise<void> {
+  const mode = getMode(project.style.mode);
+  preparing = (async () => {
+    try {
+      await mode.prepare?.(previewEnv);
+      await prepareHud(project.style, previewEnv);
+    } catch (e) {
+      console.error(e);
+      $('statusText').textContent = 'No se pudo iniciar el modo 3D (WebGL)';
+    }
+    drawFrame();
+  })();
+  return preparing;
+}
 
 function sizeCanvas(): void {
   const r = cv.getBoundingClientRect();
@@ -142,7 +165,11 @@ function drawFrame(): void {
   if (!plan || (plan as { kind?: string }).kind !== project.style.mode) return;
   const s = cv.width / W;
   ctx.setTransform(s, 0, 0, s, 0, 0);
-  getMode(project.style.mode).draw(ctx, t, plan, project.style, previewEnv);
+  try {
+    getMode(project.style.mode).draw(ctx, t, plan, project.style, previewEnv);
+  } catch (e) {
+    console.error(e);
+  }
 }
 function themeColor(): string {
   const m = getComputedStyle(document.body).color.match(/\d+(\.\d+)?/g) || ['17', '17', '20'];
@@ -271,6 +298,21 @@ async function runTranscription(name: string): Promise<void> {
   } finally {
     transcribing = false;
     busy('');
+  }
+}
+/** Lee una imagen y la reduce a `maxW` px de ancho (PNG con transparencia) para guardarla en el proyecto. */
+async function fileToDataUrl(file: File, maxW: number): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const s = Math.min(1, maxW / img.width);
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width * s));
+    c.height = Math.max(1, Math.round(img.height * s));
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/png');
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 async function openFromDesktop(): Promise<void> {
@@ -569,6 +611,21 @@ const CTLS: Ctl[] = [
   strCtl('handle', st as never, 'handle', 'style'),
   strCtl('textColor', st as never, 'textColor', 'style'),
   boolCtl('noteNames', st as never, 'noteNames', 'style'),
+  strCtl('textStyle', st as never, 'textStyle', 'style'),
+  numCtl('logoSize', st as never, 'logoSize', 'style', (v) => `${Math.round(v * 100)} %`),
+  strCtl('floorColor', st as never, 'floorColor', 'style'),
+  strCtl('material3d', st as never, 'material3d', 'style'),
+  numCtl('cameraAzimuth', st as never, 'cameraAzimuth', 'style', (v) => `${v}°`),
+  numCtl('cameraElevation', st as never, 'cameraElevation', 'style', (v) => `${v}°`),
+  numCtl('cameraDistance', st as never, 'cameraDistance', 'style', (v) => `${fmt(v, 1)}`),
+  numCtl('lightAngle', st as never, 'lightAngle', 'style', (v) => `${v}°`),
+  numCtl('shadowSoftness', st as never, 'shadowSoftness', 'style', (v) => `${Math.round(v * 100)} %`),
+  numCtl('pace3d', st as never, 'pace3d', 'style', (v) => `${fmt(v, 1)}`),
+  numCtl('spread3d', st as never, 'spread3d', 'style', (v) => `${fmt(v, 1)}`),
+  numCtl('tileSize', st as never, 'tileSize', 'style', (v) => `${fmt(v, 2)}`),
+  numCtl('ballSize3d', st as never, 'ballSize3d', 'style', (v) => `${fmt(v, 2)}`),
+  numCtl('recoil', st as never, 'recoil', 'style', (v) => `×${fmt(v, 1)}`),
+  boolCtl('heightByPitch', st as never, 'heightByPitch', 'style'),
   boolCtl('counter', st as never, 'counter', 'style'),
   numCtl(
     'onsetThresh',
@@ -637,8 +694,10 @@ function onChange(c: Ctl, el: HTMLInputElement | HTMLSelectElement): void {
     }
   } else if (c.after === 'style') {
     stop();
-    if (c.id === 'mode') replan();
-    else if (planChanged(project.style.mode, before, project.style)) schedule(replan, 120);
+    if (c.id === 'mode') {
+      replan();
+      void prepareMode();
+    } else if (planChanged(project.style.mode, before, project.style)) schedule(replan, 120);
     else drawFrame();
     if (['mode', 'colorMode', 'palette', 'ringMode', 'bgTop', 'bgBottom'].includes(c.id)) syncControls();
   }
@@ -683,6 +742,27 @@ function bind(): void {
     input.value = '';
   });
   $('demo').addEventListener('click', () => void loadDemo());
+  $('logoFile').addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const f = input.files?.[0];
+    input.value = '';
+    if (!f) return;
+    try {
+      project.style.logo = await fileToDataUrl(f, 900);
+      syncControls();
+      await prepareHud(project.style, previewEnv);
+      drawFrame();
+      persist();
+    } catch {
+      $('statusText').textContent = 'No se pudo leer la imagen';
+    }
+  });
+  $('logoClear').addEventListener('click', () => {
+    project.style.logo = '';
+    syncControls();
+    drawFrame();
+    persist();
+  });
   $('retranscribe').addEventListener('click', () => void runTranscription(score?.name || 'canción'));
   $('downloadMidi').addEventListener('click', () => void downloadMidi());
   $('reset').addEventListener('click', () => {
@@ -793,6 +873,7 @@ function start(): void {
       drawFrame();
     });
   void loadDemo();
+  void prepareMode();
   void ensureInstrument().catch(() => undefined);
   (window as unknown as { __bolas: unknown }).__bolas = {
     get state() {
@@ -811,6 +892,20 @@ function start(): void {
     },
     setTranscribe(o: Partial<TranscribeOptions>) {
       transcribeOpts = { ...transcribeOpts, ...o };
+    },
+    async setMode(mode: string) {
+      project.style.mode = mode;
+      syncControls();
+      replan();
+      await prepareMode();
+    },
+    setMusic(o: Partial<MusicSettings>) {
+      Object.assign(project.music, o);
+      syncControls();
+      rebuild();
+    },
+    get ready() {
+      return preparing ?? Promise.resolve();
     },
   };
 }

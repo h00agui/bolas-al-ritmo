@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.2.0 — 2026-11-18
+
+- Nuevo modo **Plataformas 3D** (three.js): suelo con sombras suaves, placas cromadas sobre varillas que rebotan como un muelle al golpe, bola tipo canica, chispas y cámara diagonal que sigue a la bola. Ajustes de suelo, material, cámara, luz, avance, anchura, tamaño de placa y de bola, rebote y "agudos más altos".
+- Rótulos estilo **etiqueta** (píldora oscura en cursiva arriba a la izquierda) y **logo propio** (imagen subida por el usuario) en todos los modos.
+- El motor de línea de comandos avisa de que el modo 3D se exporta desde la web o la app.
+
 ## 0.1.2 — 2026-11-18
 
 - Publicación de la app en una sola release por versión (la 0.1.1 quedó duplicada por una carrera al publicar).

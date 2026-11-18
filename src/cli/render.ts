@@ -6,7 +6,7 @@
 //        [--start 0] [--duration 30] [--speed 1] [--min-gap 0.1] [--title "..."] [--subtitle "..."]
 //        [--handle "@cuenta"] [--palette arcoiris] [--color-mode nota|paleta] [--stills 1.5,7.2]
 //   Con --project se usan los ajustes del archivo (los parámetros sueltos los sobrescriben).
-import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { renderHits } from '../core/audio/sampler.ts';
 import { parseMidi } from '../core/midi/parse.ts';
 import { getMode } from '../core/modes/index.ts';
-import type { CanvasLike, DrawEnv } from '../core/scene/draw.ts';
+import { prepareHud, type CanvasLike, type DrawEnv } from '../core/scene/draw.ts';
 import { buildProject, normalizeProject, type Project } from '../core/project.ts';
 import { FPS, SAMPLE_RATE, VIDEO_H, VIDEO_W } from '../core/types.ts';
 import { loadInstrumentNode } from '../node/audio.ts';
@@ -58,6 +58,12 @@ if (arg('color-mode')) project.style.colorMode = arg('color-mode') as 'nota' | '
 const out = arg('out') ?? 'video.mp4';
 
 const score = midiFile ? parseMidi(fs.readFileSync(midiFile), path.basename(midiFile)) : null;
+if (getMode(project.style.mode).requiresWebGL) {
+  console.error(
+    `El modo "${getMode(project.style.mode).name}" necesita WebGL: expórtalo desde la web o la app. Aquí se usa el modo Plataformas.`,
+  );
+  project.style.mode = 'platforms';
+}
 const { hits, duration, plan } = buildProject(project, score);
 const mode = getMode(project.style.mode);
 console.log(
@@ -70,7 +76,10 @@ const env: DrawEnv = {
   makeCanvas: (w, h) => createCanvas(w, h) as unknown as CanvasLike,
   cache: {},
   fps: FPS,
+  loadImage: async (src) =>
+    (await loadImage(src)) as unknown as CanvasImageSource & { width: number; height: number },
 };
+await prepareHud(project.style, env);
 
 const stills = arg('stills');
 if (stills) {

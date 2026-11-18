@@ -72,11 +72,44 @@ const st = await page.evaluate(() => {
 console.log('cargado:', JSON.stringify(st));
 await page.screenshot({ path: 'out/web_desktop.png' });
 
-// cambiar de modo desde la interfaz
-await page.select('#mode', 'ring');
-await new Promise((r) => setTimeout(r, 400));
+// cambiar de modo desde la interfaz y capturar cada uno
+for (const mode of ['ring', 'platforms', 'platforms3d']) {
+  await page.evaluate((m) => window.__bolas.setMode(m), mode);
+  await page.evaluate(() => window.__bolas.ready);
+  await new Promise((r) => setTimeout(r, 600));
+  await page.screenshot({
+    path: `out/web_mode_${mode}.png`,
+    clip: { x: 60, y: 130, width: 400, height: 640 },
+  });
+}
 console.log('modo:', await page.evaluate(() => window.__bolas.state.project.style.mode));
-await page.select('#mode', 'platforms');
+// exportación corta en 3D (WebGL por software: lenta)
+if (!process.argv.includes('--no-export')) {
+  const t0 = Date.now();
+  await page.evaluate(() => window.__bolas.setMusic({ duration: 4 }));
+  await page.evaluate(() => window.__bolas.exportVideo());
+  await page.waitForFunction(
+    () => window.__bolas.lastResult || /No se pudo/.test(document.getElementById('exportMsg').textContent),
+    { timeout: 900000 },
+  );
+  console.log(
+    'export 3D:',
+    await page.evaluate(() => document.getElementById('exportMsg').textContent),
+    `(${((Date.now() - t0) / 1000).toFixed(1)} s)`,
+  );
+  const b64 = await page.evaluate(async () => {
+    const r = window.__bolas.lastResult;
+    if (!r) return null;
+    const buf = new Uint8Array(await r.blob.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < buf.length; i += 0x8000)
+      s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+  if (b64) fs.writeFileSync('out/web_export_3d.mp4', Buffer.from(b64, 'base64'));
+  await page.evaluate(() => window.__bolas.setMusic({ duration: 30 }));
+}
+await page.evaluate(() => window.__bolas.setMode('platforms'));
 
 if (!process.argv.includes('--no-transcribe')) {
   const t0 = Date.now();

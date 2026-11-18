@@ -36,10 +36,28 @@ export interface SceneStyle {
   platformThickness: number;
   descent: number; // px/s de bajada media
   spread: number; // 0..1 anchura usada de la pantalla
+  // rótulo y logo
+  textStyle: 'simple' | 'etiqueta';
+  logo: string; // imagen (data URL) o ''
+  logoSize: number; // 0..1 fracción del ancho
+  // modo plataformas 3D
+  floorColor: string;
+  material3d: 'cromo' | 'color' | 'mate';
+  cameraAzimuth: number; // grados
+  cameraElevation: number; // grados
+  cameraDistance: number; // unidades
+  lightAngle: number; // grados (de dónde viene la luz)
+  shadowSoftness: number; // 0..1
+  pace3d: number; // unidades/s de avance
+  spread3d: number; // unidades de anchura lateral
+  heightByPitch: boolean; // varillas más altas para notas agudas
+  tileSize: number; // unidades (largo de la placa)
+  recoil: number; // 0..2 fuerza del rebote de la placa
+  ballSize3d: number; // radio en unidades
 }
 
 export const DEFAULT_STYLE: SceneStyle = {
-  mode: 'platforms',
+  mode: 'platforms3d',
   colorMode: 'nota',
   palette: 'arcoiris',
   colors: ['#ff4d6d', '#ffd166', '#06d6a0', '#4cc9f0', '#b388ff'],
@@ -69,6 +87,22 @@ export const DEFAULT_STYLE: SceneStyle = {
   platformThickness: 20,
   descent: 300,
   spread: 0.7,
+  textStyle: 'simple',
+  logo: '',
+  logoSize: 0.42,
+  floorColor: '#3c6e55',
+  material3d: 'cromo',
+  cameraAzimuth: 35,
+  cameraElevation: 56,
+  cameraDistance: 13,
+  lightAngle: 35,
+  shadowSoftness: 0.6,
+  pace3d: 2.4,
+  spread3d: 2.2,
+  heightByPitch: true,
+  tileSize: 1,
+  recoil: 1,
+  ballSize3d: 0.2,
 };
 
 /** Color de cada choque según el modo de color. */

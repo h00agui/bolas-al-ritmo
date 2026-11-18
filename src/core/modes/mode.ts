@@ -9,6 +9,10 @@ export interface Mode<P = unknown> {
   description: string;
   /** Ajustes de estilo que obligan a recalcular el plan (los demás solo cambian el dibujo). */
   planKeys: (keyof SceneStyle)[];
+  /** Necesita WebGL (solo web y app; el motor de Node no lo dibuja). */
+  requiresWebGL?: boolean;
+  /** Carga lo que el dibujo necesita (p. ej. la escena WebGL) antes de la primera llamada a draw. */
+  prepare?: (env: DrawEnv) => Promise<void>;
   /** Calcula la trayectoria completa: un objeto JSON puro, igual en la web y en el motor. */
   plan(hits: Hit[], duration: number, style: SceneStyle): P;
   /** Dibuja el instante t (s) en un lienzo de 1080×1920. */
