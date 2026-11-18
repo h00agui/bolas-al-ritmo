@@ -21,7 +21,17 @@ jobs:
           node-version: 22
           cache: npm
       - name: ffmpeg (lo usan el motor y las pruebas)
+        id: ffmpeg
         uses: FedericoCarboni/setup-ffmpeg@v3
+        continue-on-error: true
+        with:
+          ffmpeg-version: release
+      - name: ffmpeg desde apt (si la descarga estática falla)
+        if: steps.ffmpeg.outcome == 'failure'
+        timeout-minutes: 8
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg)
+      - run: ffmpeg -version | head -1
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
