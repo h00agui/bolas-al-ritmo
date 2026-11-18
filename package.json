@@ -1,6 +1,6 @@
 {
   "name": "bolas-al-ritmo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Vídeos verticales de una bola que toca una canción: cada choque suena la nota del MIDI. Web + motor de render.",
   "type": "module",
@@ -33,6 +33,7 @@
     "@spotify/basic-pitch": "^1.0.1",
     "@tensorflow/tfjs": "^4.22.0",
     "@tonejs/midi": "^2.0.28",
+    "electron-updater": "^6.8.11",
     "mp4-muxer": "^5.2.2"
   },
   "devDependencies": {
@@ -40,7 +41,6 @@
     "@types/node": "^26.6.6",
     "electron": "^45.3.4",
     "electron-builder": "^26.18.0",
-    "electron-updater": "^6.8.11",
     "eslint": "^10.15.0",
     "prettier": "^3.10.1",
     "puppeteer-core": "^25.18.1",
