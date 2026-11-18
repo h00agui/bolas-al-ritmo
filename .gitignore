@@ -1,0 +1,17 @@
+# dependencias y compilados
+node_modules/
+dist/
+.cache/
+out/
+*.part.mp4
+
+# generado por `npm run assets` (se copia desde node_modules)
+public/models/
+public/fonts/
+
+# editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
