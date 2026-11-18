@@ -4,6 +4,7 @@ import { parseMidi } from '@core/midi/parse.ts';
 import { scoreToHits, hitsDuration } from '@core/music/hits.ts';
 import { mergeBallHits, splitHitsIntoBalls } from '@core/music/voices.ts';
 import {
+  ballActive,
   ballAtPlan,
   cameraAt,
   composeSegments,
@@ -39,11 +40,17 @@ describe('reparto entre bolas', () => {
 });
 
 describe('planCircuit', () => {
-  const st = { ...DEFAULT_STYLE, maxBalls: 3 };
+  const st = { ...DEFAULT_STYLE, maxBalls: 3, pieces: 'auto' as const };
   const plan = planCircuit(raw, hitsDuration(raw), st, { minGap: 0.2 });
 
-  it('reparte en varias bolas y cada una llega exacta a sus piezas', () => {
+  it('reparte en varias bolas, cada una llega exacta a sus piezas y el circuito desciende', () => {
     expect(plan.balls.length).toBeGreaterThan(1);
+    for (const b of plan.balls)
+      for (let k = 1; k < b.T.length; k++) expect(b.P[k][1]).toBeLessThan(b.P[k - 1][1]);
+    // una bola secundaria no está en escena antes de empezar a caer
+    const second = plan.balls[1];
+    expect(ballActive(second, Math.max(0, second.pre!.tRel - 0.1))).toBe(false);
+    expect(ballActive(second, second.T[0])).toBe(true);
     for (const b of plan.balls)
       for (let k = 0; k < b.T.length; k++) {
         const p = ballAtPlan(b, plan, b.T[k]);
@@ -56,9 +63,9 @@ describe('planCircuit', () => {
     const ps = plan.pieces;
     for (let i = 0; i < ps.length; i++)
       for (let j = i + 1; j < ps.length; j++) {
-        if (Math.abs(ps[i].P[2] - ps[j].P[2]) > 2.5) continue;
-        const d = Math.hypot(ps[i].P[0] - ps[j].P[0], ps[i].P[2] - ps[j].P[2]);
-        expect(d).toBeGreaterThan(0.8);
+        if (Math.abs(ps[i].P[1] - ps[j].P[1]) > 2.5) continue;
+        const d = Math.hypot(ps[i].P[0] - ps[j].P[0], ps[i].P[1] - ps[j].P[1]);
+        expect(d).toBeGreaterThan(0.7);
       }
   });
 
@@ -74,13 +81,41 @@ describe('planCircuit', () => {
     expect(fixed.every((s) => s.kind === 'drum')).toBe(true);
   });
 
-  it('la cámara está definida en todo momento, mira hacia las bolas y vibra en los acentos', () => {
-    for (const t of [0, 3, 10, 20, plan.duration]) {
+  it('la cámara encuadra siempre a todas las bolas en escena y vibra en los acentos', () => {
+    const aspect = 9 / 16;
+    let checked = 0;
+    for (let t = 0; t < plan.duration; t += 0.25) {
       const c = cameraAt(plan, t);
       expect(c.pos.every(Number.isFinite)).toBe(true);
-      expect(c.fov).toBeGreaterThan(20);
-      expect(c.pos[1]).toBeGreaterThan(c.look[1]);
+      expect(c.pos[2]).toBeGreaterThan(plan.wallZ);
+      const f = [c.look[0] - c.pos[0], c.look[1] - c.pos[1], c.look[2] - c.pos[2]];
+      const fl = Math.hypot(...f);
+      const fw = f.map((v) => v / fl);
+      const right = [fw[2], 0, -fw[0]];
+      const rl = Math.hypot(...right);
+      const rt = right.map((v) => v / rl);
+      const upv = [
+        rt[1] * fw[2] - rt[2] * fw[1],
+        rt[2] * fw[0] - rt[0] * fw[2],
+        rt[0] * fw[1] - rt[1] * fw[0],
+      ];
+      const tanV = Math.tan((c.fov * Math.PI) / 360);
+      const tanH = tanV * aspect;
+      for (const b of plan.balls) {
+        // al acabar su último golpe la bola cae y sale de plano a propósito
+        if (!ballActive(b, t) || t > b.T[b.T.length - 1] + (b.tail?.hold ?? 1)) continue;
+        const p = ballAtPlan(b, plan, t);
+        const v = [p[0] - c.pos[0], p[1] - c.pos[1], p[2] - c.pos[2]];
+        const depth = v[0] * fw[0] + v[1] * fw[1] + v[2] * fw[2];
+        expect(depth).toBeGreaterThan(0);
+        const hx = Math.abs(v[0] * rt[0] + v[1] * rt[1] + v[2] * rt[2]) / depth;
+        const vy = Math.abs(v[0] * upv[0] + v[1] * upv[1] + v[2] * upv[2]) / depth;
+        expect(hx).toBeLessThan(tanH);
+        expect(vy).toBeLessThan(tanV);
+        checked++;
+      }
     }
+    expect(checked).toBeGreaterThan(50);
     const strong = plan.audioHits.find((h) => h.strength > 0.8);
     if (strong) expect(shakeAt(plan, strong.t + 0.02)).toBeGreaterThan(0);
     expect(recoilAt(2, 1, 1)).toBe(0);

@@ -56,7 +56,7 @@ export interface SceneStyle {
   ballSize3d: number; // radio en unidades
   // circuito
   maxBalls: number; // 1..6
-  pieces: 'auto' | 'plate' | 'bar' | 'drum' | 'bumper';
+  pieces: 'auto' | 'key' | 'plate' | 'bar' | 'drum' | 'bumper';
   cameraDirector: boolean; // planos y cortes automáticos
   seed: number; // variante del trazado
   bloom: number; // 0..1
@@ -103,14 +103,14 @@ export const DEFAULT_STYLE: SceneStyle = {
   cameraDistance: 13,
   lightAngle: 35,
   shadowSoftness: 0.6,
-  pace3d: 2.4,
-  spread3d: 2.2,
+  pace3d: 2.6,
+  spread3d: 2.4,
   heightByPitch: true,
   tileSize: 1,
   recoil: 1,
-  ballSize3d: 0.2,
+  ballSize3d: 0.24,
   maxBalls: 3,
-  pieces: 'auto',
+  pieces: 'key',
   cameraDirector: true,
   seed: 1,
   bloom: 0.35,

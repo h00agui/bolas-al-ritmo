@@ -912,6 +912,19 @@ function start(): void {
       syncControls();
       rebuild();
     },
+    async setStyle(o: Partial<SceneStyle>) {
+      Object.assign(project.style, o);
+      syncControls();
+      replan();
+      await prepareMode();
+    },
+    seek(sec: number) {
+      stop();
+      t = Math.max(0, Math.min(duration, sec));
+      drawFrame();
+      updateTime();
+      redrawRoll();
+    },
     get ready() {
       return preparing ?? Promise.resolve();
     },

@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.4.0 — 2026-11-18
+
+- **Circuito vertical**: las piezas cuelgan de una pared y las bolas caen de arriba abajo por gravedad, de pieza en pieza, llegando exactas a cada nota (la caída inicial entra por arriba del plano). Ajustes "Velocidad de caída" y "Anchura del circuito".
+- **Teclas de piano** con grosor (blancas para las notas naturales y negras para los sostenidos), que se hunden sobre su bisagra al golpe; son la pieza por defecto y se pueden mezclar con placas, barras, tambores y bumpers desde "Piezas del circuito".
+- **Cámara que nunca pierde las bolas**: el encuadre se calcula por adelantado para contener a todas las bolas en escena y la pieza siguiente, anticipa los movimientos y mantiene los cortes de plano entre tramos.
+- Las bolas secundarias solo aparecen cuando empiezan a caer hacia su primera pieza y salen de plano tras su último golpe.
+- Iluminación más suave (sin teclas quemadas), bolas algo mayores y con el color de su siguiente nota desde el principio.
+- `scripts/frames.mjs`: captura fotogramas (y opcionalmente exporta el vídeo) de la vista previa en Chrome sin pantalla, para revisar el aspecto.
+
 ## 0.3.0 — 2026-11-18
 
 - El modo 3D pasa a ser **Circuito 3D**: la canción se divide en tramos y cada tramo usa una pieza distinta (placas cromadas, barras de xilófono con el largo de su nota, tambores, bumpers de pinball); selector de piezas (automático o una fija) y **variante** (semilla) para otro trazado con la misma canción.

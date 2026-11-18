@@ -1,6 +1,6 @@
 # Bolas al ritmo
 
-Vídeos verticales (TikTok, Reels, Shorts) de una bola que **toca una canción**: baja a saltos por plataformas, o rebota dentro de un aro, y en cada choque suena la nota que toca. La música sale del MIDI, nota a nota, con el instrumento que elijas.
+Vídeos verticales (TikTok, Reels, Shorts) de una o varias bolas que **tocan una canción**: caen por un circuito 3D de teclas de piano (o placas, barras, tambores y bumpers) colgado de una pared, bajan a saltos por plataformas en 2D, o rebotan dentro de un aro, y en cada choque suena la nota que toca. La música sale del MIDI, nota a nota, con el instrumento que elijas.
 
 - **Web**: sube un MIDI o una canción (se convierte a MIDI en el navegador), ajusta y descarga el MP4. Todo se procesa en tu navegador; no se sube nada a ningún servidor.
 - **Motor de render** (Node + ffmpeg): el mismo núcleo, para renders por lotes o desde la línea de comandos.
@@ -12,7 +12,7 @@ Vídeos verticales (TikTok, Reels, Shorts) de una bola que **toca una canción**
    - **Qué notas**: _Melodía_ (una nota por choque, la más aguda), _Acordes_ (todas las notas simultáneas en el mismo choque) o _Bajo_.
    - **Empieza en** (toca el piano roll) y **Duración**; **Velocidad** para ralentizar o acelerar; **Separación mínima** para que la bola no tenga que chocar más rápido de lo que se ve bien.
 2. **Sonido**: instrumento (piano, caja de música, marimba, 8-bit…), volumen, reverb y si las notas se dejan sonar o duran lo que dice el MIDI. El botón de reproducir suena en vivo.
-3. **Escena**: modo _Plataformas_ o _Aro_, colores por nota o por paleta, tamaños, gravedad, estela, chispas, fondo, textos (título, artista, tu @usuario), nombre de las notas y contador.
+3. **Escena**: modo _Circuito 3D_ (teclas de piano con grosor u otras piezas, varias bolas si la melodía es densa, director de cámara con cambios de plano que nunca pierde las bolas, color del fondo, material, luz, velocidad de caída, anchura, tamaño de piezas y bolas, resplandor), _Plataformas_ o _Aro_; colores por nota o por paleta, tamaños, gravedad, estela, chispas, fondo, textos (título, artista, tu @usuario), logo propio, nombre de las notas y contador.
 4. **Descargar**: _Crear vídeo MP4_ (1080×1920, 30 fps). Después _Guardar MP4_ o, en el móvil, _Compartir…_ para mandarlo a TikTok. _Guardar proyecto_ deja un `.json` con todos los ajustes; _Descargar MIDI_ guarda la transcripción.
 
 Navegadores: Chrome y Edge crean el MP4 en segundos (WebCodecs); el modo 3D tarda más (dibuja con la tarjeta gráfica fotograma a fotograma). Si al navegador le falta algún codificador, la web graba el vídeo en tiempo real (tarda lo que dura el vídeo; hay que quedarse en la pestaña). La conversión a MIDI usa la GPU si está disponible.
@@ -36,6 +36,7 @@ npm run dev          # web en http://localhost:5173
 npm test             # pruebas unitarias (MIDI, choques, sampler)
 npm run build        # genera dist/ (web lista para publicar)
 npm run test:e2e     # prueba de punta a punta en Chrome sin pantalla (necesita Chrome y la build)
+node scripts/frames.mjs --times 1,5,10 [--export]   # capturas (y vídeo) de la vista previa 3D para revisar el aspecto
 npm run lint         # ESLint + Prettier
 ```
 
