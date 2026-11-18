@@ -84,7 +84,9 @@ Añade una entrada a `src/core/audio/catalog.js` con el nombre del instrumento G
 
 ## Publicar la web
 
-**Cloudflare Pages** (gratis, permite uso comercial):
+**GitHub Pages** (gratis con el repositorio público): Settings → Pages → _Build and deployment_ → Source: **GitHub Actions**. A partir de ahí, cada push a `main` publica en `https://h00agui.github.io/bolas-al-ritmo/` (workflow `pages.yml`).
+
+**Cloudflare Pages** (gratis, permite uso comercial, dominio propio):
 
 - _Con el panel_: Workers & Pages → Create → Pages → Connect to Git → este repositorio. Build command `npm run build`, output `dist`. Cada push a `main` publica solo.
 - _Con GitHub Actions_: añade los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` al repositorio y el workflow `deploy.yml` publica en cada push.
