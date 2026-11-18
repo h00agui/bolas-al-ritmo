@@ -8,7 +8,7 @@ export type Ctx = CanvasRenderingContext2D;
 export interface CanvasLike {
   width: number;
   height: number;
-  getContext(type: '2d'): Ctx;
+  getContext(type: '2d'): Ctx | null;
 }
 
 /** Entorno de dibujo: cómo crear lienzos auxiliares, caché y fps (decide en qué fotograma cae cada choque). */
@@ -37,7 +37,7 @@ export function background(style: SceneStyle, env: DrawEnv, extra = ''): CanvasL
   const key = JSON.stringify([style.bgTop, style.bgBottom, extra]);
   if (env.cache.bgKey === key) return env.cache.bg as CanvasLike;
   const c = (env.cache.bg as CanvasLike | undefined) ?? env.makeCanvas(W, H);
-  const x = c.getContext('2d');
+  const x = c.getContext('2d')!;
   x.setTransform(1, 0, 0, 1, 0, 0);
   x.globalCompositeOperation = 'source-over';
   x.globalAlpha = 1;

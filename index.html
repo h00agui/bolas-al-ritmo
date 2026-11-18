@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Crea vídeos verticales de una bola que toca una canción: sube un MIDI o una canción y cada choque suena la nota."
+    />
+    <title>Bolas al ritmo</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/web/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>Bolas al ritmo</h1>
+        <p>
+          Sube un MIDI o una canción: la bola baja a saltos y cada choque toca la nota. Descarga el vídeo
+          listo para TikTok, Reels o Shorts.
+        </p>
+      </div>
+      <span class="chip" id="status"><i></i><span id="statusText">Preparando…</span></span>
+    </header>
+
+    <main class="studio">
+      <section class="stage" aria-label="Vista previa">
+        <div class="phone">
+          <canvas id="cv" width="540" height="960" aria-label="Vista previa del vídeo"></canvas>
+          <div class="busy" id="busy" hidden></div>
+        </div>
+        <div class="transport">
+          <button class="round" id="play" type="button" aria-label="Reproducir">
+            <svg id="icoPlay" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" /></svg>
+            <svg id="icoPause" viewBox="0 0 24 24" hidden><path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z" /></svg>
+          </button>
+          <div class="scrub">
+            <canvas id="ticks"></canvas>
+            <input type="range" id="seek" min="0" max="30" step="0.01" value="0" aria-label="Posición" />
+          </div>
+          <span class="time" id="time">0:00 / 0:00</span>
+        </div>
+        <p class="note" id="songNote"></p>
+      </section>
+
+      <section class="desk">
+        <div class="panel wide">
+          <h2>Música</h2>
+          <div class="btns">
+            <label class="btn rec file"
+              >Subir MIDI<input type="file" id="fileMidi" accept=".mid,.midi,audio/midi"
+            /></label>
+            <label class="btn file"
+              >Subir canción (se convierte a MIDI)<input
+                type="file"
+                id="fileAudio"
+                accept="audio/*,video/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.mp4,.mov"
+            /></label>
+            <button class="btn" type="button" id="demo">Usar el ejemplo</button>
+          </div>
+          <p class="song" id="songName"></p>
+          <div class="roll" id="rollBox" title="Toca para elegir dónde empieza el vídeo">
+            <canvas id="roll"></canvas>
+          </div>
+          <div class="tracks" id="tracks"></div>
+          <div class="grid2">
+            <div class="row two">
+              <label for="selection">Qué notas</label>
+              <select id="selection">
+                <option value="melody">Melodía (nota más aguda)</option>
+                <option value="chords">Acordes (todas a la vez)</option>
+                <option value="bass">Bajo (nota más grave)</option>
+              </select>
+            </div>
+            <div class="row two">
+              <label for="dur">Duración</label>
+              <select id="dur">
+                <option value="15">15 segundos</option>
+                <option value="30" selected>30 segundos</option>
+                <option value="45">45 segundos</option>
+                <option value="60">60 segundos</option>
+                <option value="90">90 segundos</option>
+                <option value="0">Canción entera</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="start">Empieza en</label
+              ><input type="range" id="start" min="0" max="60" step="0.1" value="0" /><output
+                id="startV"
+              ></output>
+            </div>
+            <div class="row">
+              <label for="speed">Velocidad</label
+              ><input type="range" id="speed" min="0.5" max="1.5" step="0.05" /><output id="speedV"></output>
+            </div>
+            <div class="row">
+              <label for="minGap">Separación mínima</label
+              ><input type="range" id="minGap" min="0.06" max="0.6" step="0.01" /><output
+                id="minGapV"
+              ></output>
+            </div>
+            <div class="row">
+              <label for="lead">Silencio inicial</label
+              ><input type="range" id="lead" min="0" max="2" step="0.1" /><output id="leadV"></output>
+            </div>
+          </div>
+          <div id="transcribeBox" hidden>
+            <p class="sub">Conversión a MIDI</p>
+            <p class="msg">
+              Funciona mejor con piano, voz sola o un instrumento limpio. Con una mezcla completa (voz +
+              batería) conviene subir la melodía como MIDI.
+            </p>
+            <div class="grid2">
+              <div class="row">
+                <label for="onsetThresh">Sensibilidad</label
+                ><input type="range" id="onsetThresh" min="0.2" max="0.8" step="0.05" /><output
+                  id="onsetThreshV"
+                ></output>
+              </div>
+              <div class="row">
+                <label for="minNoteLen">Nota mínima</label
+                ><input type="range" id="minNoteLen" min="3" max="30" step="1" /><output
+                  id="minNoteLenV"
+                ></output>
+              </div>
+            </div>
+            <div class="btns">
+              <button class="btn" type="button" id="retranscribe">Volver a convertir</button>
+              <button class="btn" type="button" id="downloadMidi">Descargar MIDI</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Sonido</h2>
+          <div class="row two">
+            <label for="instrument">Instrumento</label
+            ><select id="instrument"></select>
+          </div>
+          <div class="row">
+            <label for="volume">Volumen</label
+            ><input type="range" id="volume" min="0.2" max="1" step="0.05" /><output id="volumeV"></output>
+          </div>
+          <div class="row">
+            <label for="reverb">Reverb</label
+            ><input type="range" id="reverb" min="0" max="1" step="0.05" /><output id="reverbV"></output>
+          </div>
+          <div class="row two">
+            <label for="sustain">Duración de las notas</label>
+            <select id="sustain">
+              <option value="ring">Dejar sonar</option>
+              <option value="midi">La del MIDI</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Escena</h2>
+          <div class="row two">
+            <label for="mode">Modo</label>
+            <select id="mode"></select>
+          </div>
+          <p class="msg" id="modeDesc"></p>
+          <div class="presets" id="presets"></div>
+          <div class="row two">
+            <label for="colorMode">Colores</label>
+            <select id="colorMode">
+              <option value="nota">Por nota (cada nota, su color)</option>
+              <option value="paleta">Por paleta (van cambiando)</option>
+            </select>
+          </div>
+          <div class="row two" id="paletteRow">
+            <label for="palette">Paleta</label
+            ><select id="palette"></select>
+          </div>
+          <div class="row two" id="customRow" hidden>
+            <label>Mis colores</label>
+            <div class="swatches">
+              <input type="color" id="c0" aria-label="Color 1" /><input
+                type="color"
+                id="c1"
+                aria-label="Color 2"
+              /><input type="color" id="c2" aria-label="Color 3" /><input
+                type="color"
+                id="c3"
+                aria-label="Color 4"
+              /><input type="color" id="c4" aria-label="Color 5" />
+            </div>
+          </div>
+        </div>
+
+        <div class="panel wide">
+          <h2>Ajustes de la escena</h2>
+          <div class="grid2">
+            <div data-mode="platforms" class="row">
+              <label for="platformLength">Ancho de plataforma</label
+              ><input type="range" id="platformLength" min="60" max="260" step="5" /><output
+                id="platformLengthV"
+              ></output>
+            </div>
+            <div data-mode="platforms" class="row">
+              <label for="platformThickness">Grosor</label
+              ><input type="range" id="platformThickness" min="10" max="40" step="1" /><output
+                id="platformThicknessV"
+              ></output>
+            </div>
+            <div data-mode="platforms" class="row">
+              <label for="descent">Bajada</label
+              ><input type="range" id="descent" min="80" max="700" step="10" /><output id="descentV"></output>
+            </div>
+            <div data-mode="platforms" class="row">
+              <label for="spread">Anchura usada</label
+              ><input type="range" id="spread" min="0.3" max="0.95" step="0.05" /><output
+                id="spreadV"
+              ></output>
+            </div>
+            <div data-mode="ring" class="row">
+              <label for="ringRadius">Tamaño del aro</label
+              ><input type="range" id="ringRadius" min="280" max="520" step="5" /><output
+                id="ringRadiusV"
+              ></output>
+            </div>
+            <div data-mode="ring" class="row">
+              <label for="ringWidth">Grosor del aro</label
+              ><input type="range" id="ringWidth" min="3" max="28" step="1" /><output
+                id="ringWidthV"
+              ></output>
+            </div>
+            <div data-mode="ring" class="row two">
+              <label for="ringMode">Aro</label
+              ><select id="ringMode">
+                <option value="cambia">Cambia de color en cada choque</option>
+                <option value="fijo">Siempre del mismo color</option>
+              </select>
+            </div>
+            <div data-mode="ring" class="row two">
+              <label for="ringColor">Color del aro</label>
+              <div class="swatches"><input type="color" id="ringColor" /></div>
+            </div>
+            <div class="row">
+              <label for="ballStart">Bola al empezar</label
+              ><input type="range" id="ballStart" min="10" max="80" step="1" /><output
+                id="ballStartV"
+              ></output>
+            </div>
+            <div class="row">
+              <label for="ballEnd">Bola al final</label
+              ><input type="range" id="ballEnd" min="10" max="200" step="1" /><output id="ballEndV"></output>
+            </div>
+            <div class="row">
+              <label for="gravity">Gravedad</label
+              ><input type="range" id="gravity" min="0.4" max="2.2" step="0.05" /><output
+                id="gravityV"
+              ></output>
+            </div>
+            <div class="row">
+              <label for="chaos">Rebote loco</label
+              ><input type="range" id="chaos" min="0" max="1" step="0.05" /><output id="chaosV"></output>
+            </div>
+            <div class="row">
+              <label for="trail">Estela</label
+              ><input type="range" id="trail" min="0" max="0.6" step="0.01" /><output id="trailV"></output>
+            </div>
+            <div class="row">
+              <label for="particles">Chispas</label
+              ><input type="range" id="particles" min="0" max="2.5" step="0.1" /><output
+                id="particlesV"
+              ></output>
+            </div>
+            <div class="row">
+              <label for="glow">Brillo</label
+              ><input type="range" id="glow" min="0" max="2" step="0.05" /><output id="glowV"></output>
+            </div>
+            <div class="row two">
+              <label for="outline">Borde blanco en la bola</label><input type="checkbox" id="outline" />
+            </div>
+            <div class="row two">
+              <label>Fondo</label>
+              <div class="swatches">
+                <input type="color" id="bgTop" aria-label="Fondo arriba" /><input
+                  type="color"
+                  id="bgBottom"
+                  aria-label="Fondo abajo"
+                />
+              </div>
+            </div>
+          </div>
+          <p class="sub">Textos</p>
+          <div class="grid2">
+            <div class="row two">
+              <label for="title">Título</label
+              ><input type="text" id="title" placeholder="Nombre de la canción" />
+            </div>
+            <div class="row two">
+              <label for="subtitle">Subtítulo</label><input type="text" id="subtitle" placeholder="Artista" />
+            </div>
+            <div class="row two">
+              <label for="handle">Tu usuario</label><input type="text" id="handle" placeholder="@tucuenta" />
+            </div>
+            <div class="row two">
+              <label for="textColor">Color del texto</label>
+              <div class="swatches"><input type="color" id="textColor" /></div>
+            </div>
+            <div class="row two">
+              <label for="noteNames">Nombre de las notas</label><input type="checkbox" id="noteNames" />
+            </div>
+            <div class="row two">
+              <label for="counter">Contador de choques</label><input type="checkbox" id="counter" />
+            </div>
+          </div>
+          <div class="btns">
+            <button class="btn" type="button" id="reset">Volver al estilo inicial</button>
+          </div>
+        </div>
+
+        <div class="panel wide">
+          <h2>Descargar</h2>
+          <p>MP4 vertical 1080×1920 a 30 fotogramas por segundo, con el sonido de cada nota.</p>
+          <div class="btns">
+            <button class="btn rec" type="button" id="export">Crear vídeo MP4</button>
+            <button class="btn" type="button" id="cancel" hidden>Cancelar</button>
+          </div>
+          <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+          <p class="msg" id="exportMsg"></p>
+          <div class="result" id="result" hidden>
+            <video id="out" controls playsinline></video>
+            <div class="btns">
+              <button class="btn rec" type="button" id="save">Guardar MP4</button>
+              <button class="btn" type="button" id="share" hidden>Compartir…</button>
+            </div>
+          </div>
+          <p class="sub">Proyecto</p>
+          <p class="msg">
+            Guarda los ajustes para repetir el estilo o para renderizar con el motor (<code
+              >npm run render</code
+            >).
+          </p>
+          <div class="btns">
+            <button class="btn" type="button" id="saveProj">Guardar proyecto</button>
+            <label class="btn file"
+              >Abrir proyecto<input type="file" id="loadProj" accept=".json,application/json"
+            /></label>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="foot">
+      <p>
+        Sonidos: FluidR3 GM (MIT). Conversión a MIDI: Basic Pitch de Spotify (Apache 2.0). Todo se procesa en
+        tu navegador; no se sube nada.
+      </p>
+    </footer>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>
