@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.6.0 — 2026-11-19
+
+- **Trazado nuevo del Circuito 3D**: solo teclas y carriles. La bola sigue un recorrido fluido de un lado a otro de la pared según las frases del MIDI (curvas suaves entre frases, tramos rectos solo a ratos); con notas rápidas zigzaguea entre dos hileras de teclas inclinadas hacia dentro (paredes rectas con barra solo los primeros segundos), a ritmo medio salta de tecla en tecla avanzando en horizontal, y con notas lejanas baja por carriles rectos con curvas en U. Las teclas llevan pequeñas variaciones de ángulo para que queden sueltas pero bonitas.
+- **Cámara frontal ladeada**, fija y más lejos (se ve el entorno); ajustes de altura, giro, distancia y vaivén sutil.
+- **Canica de cristal** con vetas (dos colores configurables) como bola por defecto; la bola nunca cambia de aspecto al golpear. Otros aspectos: brillante, cromo, cristal liso, mate, neón.
+- **Teclas limpias** que se encienden del color de su nota con una subida suave y se apagan despacio.
+- **15 fondos** a elegir (fieltro, noche estrellada, madera, mármol, neón, cielo, grafito, arena, océano, lavanda…) y uno personalizado por color.
+- **Inicio y fin exactos** del tramo del MIDI (deslizadores y campos mm:ss.d, botón "Entera").
+- **Enlace de YouTube** (app de escritorio): pega el enlace y la app descarga el audio con yt-dlp (se baja solo la primera vez y se actualiza desde el menú Ayuda) y lo convierte a MIDI.
+
 ## 0.5.0 — 2026-11-19
 
 - **Cámara suave de verdad**: distancia fija durante todo el vídeo (sin zoom), sin cortes ni vibración; sigue a las bolas con un filtro simétrico que anticipa el movimiento y cambia de ángulo muy despacio por tramos (opción "Cámara con ángulo cambiante"; si se apaga, ángulo fijo).

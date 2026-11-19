@@ -33,6 +33,9 @@ export interface DesktopBridge {
   ): Promise<{ status: 'saved'; path: string } | { status: 'declined' }>;
   showInFolder(path: string): Promise<void>;
   openFile(): Promise<{ name: string; data: Uint8Array } | null>;
+  /** descarga el audio de un vídeo de YouTube (versiones recientes de la app) */
+  youtubeAudio?(url: string): Promise<{ name: string; title: string; data: Uint8Array }>;
+  onYoutubeProgress?(cb: (text: string) => void): void;
   onMenu(cb: (action: string) => void): void;
   onUpdate(cb: (text: string) => void): void;
 }

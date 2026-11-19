@@ -31,6 +31,12 @@ app.whenReady().then(async () => {
       'JSON.stringify({ url: location.href, hits: window.__bolas.state.hits.length, desktop: !!window.bolasDesktop })',
     );
     console.log('SMOKE estado', info);
+    // YouTube: el puente existe y rechaza enlaces que no son de YouTube (sin descargar nada)
+    const ytErr = await win.webContents.executeJavaScript(
+      "window.bolasDesktop.youtubeAudio('https://example.com/x').then(() => 'ok', (e) => e.message)",
+    );
+    console.log('SMOKE youtube enlace malo →', ytErr);
+    if (!/YouTube/.test(ytErr)) throw new Error('el puente de YouTube no valida el enlace');
     const img = await win.webContents.capturePage();
     require('node:fs').writeFileSync('out/app_smoke.png', img.toPNG());
     console.log('SMOKE OK');

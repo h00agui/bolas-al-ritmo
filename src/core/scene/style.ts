@@ -41,28 +41,28 @@ export interface SceneStyle {
   logo: string; // imagen (data URL) o ''
   logoSize: number; // 0..1 fracción del ancho
   // modo plataformas 3D
+  theme3d: string; // tema del fondo (ver THEMES_3D)
   floorColor: string;
-  material3d: 'cromo' | 'color' | 'mate';
   cameraAzimuth: number; // grados
   cameraElevation: number; // grados
-  cameraDistance: number; // unidades
+  cameraDistance: number; // factor sobre la distancia automática (1 = la justa)
   lightAngle: number; // grados (de dónde viene la luz)
   shadowSoftness: number; // 0..1
-  pace3d: number; // unidades/s de avance
-  spread3d: number; // unidades de anchura lateral
+  pace3d: number; // pendiente del circuito (1 = normal)
+  spread3d: number; // semianchura del circuito (unidades)
   heightByPitch: boolean; // varillas más altas para notas agudas
   tileSize: number; // unidades (largo de la placa)
   recoil: number; // 0..2 fuerza del rebote de la placa
   ballSize3d: number; // radio en unidades
   // circuito
   maxBalls: number; // 1..6
-  pieces: 'auto' | 'key' | 'plate' | 'bar' | 'drum' | 'bumper';
-  cameraDirector: boolean; // la cámara cambia de ángulo muy despacio por tramos (si no, ángulo fijo)
+  cameraDirector: boolean; // vaivén muy sutil de la cámara
   seed: number; // variante del trazado
   bloom: number; // 0..1
-  ballStyle3d: 'brillo' | 'cromo' | 'cristal' | 'mate' | 'neon'; // aspecto de la bola
+  ballStyle3d: 'canica' | 'brillo' | 'cromo' | 'cristal' | 'mate' | 'neon'; // aspecto de la bola
   ballColor3d: 'nota' | 'fija'; // color de la bola: el de su nota o uno fijo
   ballColorFixed: string; // color fijo de la bola
+  ballColor2: string; // segundo color (vetas de la canica)
   trail3d: number; // 0..1 largo de la estela
 }
 
@@ -100,27 +100,27 @@ export const DEFAULT_STYLE: SceneStyle = {
   textStyle: 'simple',
   logo: '',
   logoSize: 0.42,
+  theme3d: 'verde',
   floorColor: '#3c6e55',
-  material3d: 'cromo',
-  cameraAzimuth: 35,
-  cameraElevation: 56,
-  cameraDistance: 13,
+  cameraAzimuth: 10,
+  cameraElevation: 26,
+  cameraDistance: 1,
   lightAngle: 35,
   shadowSoftness: 0.6,
-  pace3d: 2.6,
-  spread3d: 1.6,
+  pace3d: 1,
+  spread3d: 3,
   heightByPitch: true,
   tileSize: 1,
   recoil: 1,
   ballSize3d: 0.24,
   maxBalls: 3,
-  pieces: 'key',
   cameraDirector: true,
   seed: 1,
   bloom: 0.35,
-  ballStyle3d: 'brillo',
-  ballColor3d: 'nota',
-  ballColorFixed: '#ff4d6d',
+  ballStyle3d: 'canica',
+  ballColor3d: 'fija',
+  ballColorFixed: '#2f6bff',
+  ballColor2: '#ffffff',
   trail3d: 0.45,
 };
 

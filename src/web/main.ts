@@ -21,6 +21,20 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getEl
 const fmt = (v: number, d = 1) =>
   Number(v).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** mm:ss.d (décimas) */
+const mmssd = (s: number) => {
+  const d = Math.round(s * 10);
+  return `${Math.floor(d / 600)}:${String(Math.floor((d % 600) / 10)).padStart(2, '0')}.${d % 10}`;
+};
+/** Lee "m:ss.d", "ss.d" o "ss" y devuelve segundos (o null si no se entiende). */
+const parseTime = (txt: string): number | null => {
+  const m = txt
+    .trim()
+    .replace(',', '.')
+    .match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  return (m[1] ? +m[1] * 60 : 0) + +m[2];
+};
 const STORE = 'bolas-al-ritmo:v2';
 
 // ---------- estado ----------
@@ -210,7 +224,7 @@ function rebuild(): void {
   t = Math.min(t, duration);
   ($('seek') as HTMLInputElement).max = String(duration);
   if (score) {
-    ($('start') as HTMLInputElement).max = String(Math.max(0, Math.floor((score.duration - 1) * 10) / 10));
+    syncRange();
     const rate = hits.length / Math.max(0.1, duration);
     $('statusText').textContent = `${hits.length} choques · ${fmt(duration)} s`;
     $('songNote').textContent = hits.length
@@ -313,6 +327,29 @@ async function fileToDataUrl(file: File, maxW: number): Promise<string> {
     return c.toDataURL('image/png');
   } finally {
     URL.revokeObjectURL(url);
+  }
+}
+/** Enlace de YouTube → audio (lo descarga la app de escritorio) → MIDI por transcripción. */
+async function loadFromYoutube(url: string): Promise<void> {
+  const d = desktop();
+  if (!d?.youtubeAudio) {
+    $('ytNote').hidden = false;
+    return;
+  }
+  if (!/youtu\.?be/i.test(url)) {
+    $('songName').textContent = 'Pega un enlace de YouTube (youtube.com o youtu.be).';
+    return;
+  }
+  busy('Descargando el audio de YouTube…');
+  try {
+    const r = await d.youtubeAudio(url);
+    const buf = r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) as ArrayBuffer;
+    await loadAudioFile(buf, `${r.title}.${r.name.split('.').pop() ?? 'm4a'}`);
+  } catch (e) {
+    console.error(e);
+    busy('');
+    const msg = (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    $('songName').textContent = `No se pudo bajar el audio: ${msg}`;
   }
 }
 async function openFromDesktop(): Promise<void> {
@@ -576,8 +613,7 @@ const boolCtl = (id: string, obj: () => Record<string, unknown>, key: string, af
 });
 const CTLS: Ctl[] = [
   strCtl('selection', m as never, 'selection', 'music'),
-  numCtl('dur', m as never, 'duration', 'music'),
-  numCtl('start', m as never, 'start', 'music', mmss),
+  numCtl('start', m as never, 'start', 'music', mmssd),
   numCtl('speed', m as never, 'speed', 'music', (v) => `×${fmt(v, 2)}`),
   numCtl('minGap', m as never, 'minGap', 'music', (v) => `${fmt(v, 2)} s`),
   numCtl('lead', m as never, 'lead', 'music', (v) => `${fmt(v, 1)} s`),
@@ -613,8 +649,8 @@ const CTLS: Ctl[] = [
   boolCtl('noteNames', st as never, 'noteNames', 'style'),
   strCtl('textStyle', st as never, 'textStyle', 'style'),
   numCtl('logoSize', st as never, 'logoSize', 'style', (v) => `${Math.round(v * 100)} %`),
+  strCtl('theme3d', st as never, 'theme3d', 'style'),
   strCtl('floorColor', st as never, 'floorColor', 'style'),
-  strCtl('material3d', st as never, 'material3d', 'style'),
   numCtl('cameraAzimuth', st as never, 'cameraAzimuth', 'style', (v) => `${v}°`),
   numCtl('cameraElevation', st as never, 'cameraElevation', 'style', (v) => `${v}°`),
   numCtl('cameraDistance', st as never, 'cameraDistance', 'style', (v) => `${fmt(v, 1)}`),
@@ -625,13 +661,12 @@ const CTLS: Ctl[] = [
   numCtl('tileSize', st as never, 'tileSize', 'style', (v) => `${fmt(v, 2)}`),
   numCtl('ballSize3d', st as never, 'ballSize3d', 'style', (v) => `${fmt(v, 2)}`),
   numCtl('recoil', st as never, 'recoil', 'style', (v) => `×${fmt(v, 1)}`),
-  boolCtl('heightByPitch', st as never, 'heightByPitch', 'style'),
   numCtl('maxBalls', st as never, 'maxBalls', 'style', (v) => `${v}`),
-  strCtl('pieces', st as never, 'pieces', 'style'),
   boolCtl('cameraDirector', st as never, 'cameraDirector', 'style'),
   strCtl('ballStyle3d', st as never, 'ballStyle3d', 'style'),
   strCtl('ballColor3d', st as never, 'ballColor3d', 'style'),
   strCtl('ballColorFixed', st as never, 'ballColorFixed', 'style'),
+  strCtl('ballColor2', st as never, 'ballColor2', 'style'),
   numCtl('trail3d', st as never, 'trail3d', 'style', (v) => `${Math.round(v * 100)} %`),
   numCtl('seed', st as never, 'seed', 'style', (v) => `#${v}`),
   numCtl('bloom', st as never, 'bloom', 'style', (v) => `${Math.round(v * 100)} %`),
@@ -658,7 +693,45 @@ function writeCtl(el: HTMLInputElement | HTMLSelectElement, kind: Kind, v: unkno
   if (kind === 'bool') (el as HTMLInputElement).checked = !!v;
   else el.value = String(v);
 }
+/** Fin del tramo en segundos de la canción (duración 0 = hasta el final). */
+function rangeEnd(): number {
+  const songEnd = score ? score.duration : project.music.start + 30;
+  return project.music.duration > 0
+    ? Math.min(songEnd, project.music.start + project.music.duration)
+    : songEnd;
+}
+function setRange(start: number, end: number): void {
+  const songEnd = score ? score.duration : Infinity;
+  start = Math.max(
+    0,
+    Math.min(Number.isFinite(songEnd) ? songEnd - 0.5 : start, Math.round(start * 10) / 10),
+  );
+  end = Math.max(start + 0.5, Math.min(Number.isFinite(songEnd) ? songEnd : end, Math.round(end * 10) / 10));
+  project.music.start = start;
+  project.music.duration = Math.round((end - start) * 10) / 10;
+  syncRange();
+  t = 0;
+  stop();
+  schedule(rebuild, 60);
+  persist();
+}
+/** Refleja inicio y fin en los deslizadores y en los campos exactos. */
+function syncRange(): void {
+  const songEnd = score ? score.duration : project.music.start + 30;
+  const endEl = $<HTMLInputElement>('end');
+  const startEl = $<HTMLInputElement>('start');
+  startEl.max = String(Math.max(0, Math.floor((songEnd - 0.5) * 10) / 10));
+  endEl.max = String(Math.ceil(songEnd * 10) / 10);
+  const end = rangeEnd();
+  startEl.value = String(project.music.start);
+  endEl.value = String(end);
+  $('startV').textContent = mmssd(project.music.start);
+  $('endV').textContent = mmssd(end);
+  $<HTMLInputElement>('startExact').value = mmssd(project.music.start);
+  $<HTMLInputElement>('endExact').value = mmssd(end);
+}
 function syncControls(): void {
+  syncRange();
   for (const c of CTLS) {
     const el = $<HTMLInputElement>(c.id);
     writeCtl(el, c.kind, c.get());
@@ -675,13 +748,15 @@ function syncControls(): void {
     .closest('.row')!
     .toggleAttribute('hidden', project.style.mode !== 'ring' || project.style.ringMode !== 'fijo');
   const is3d = project.style.mode === 'platforms3d';
-  for (const id of ['cameraAzimuth', 'cameraElevation', 'cameraDistance'])
-    $(id)
-      .closest('.row')!
-      .toggleAttribute('hidden', !is3d || project.style.cameraDirector);
   $('ballColorFixed')
     .closest('.row')!
     .toggleAttribute('hidden', !is3d || project.style.ballColor3d !== 'fija');
+  $('ballColor2')
+    .closest('.row')!
+    .toggleAttribute('hidden', !is3d || project.style.ballStyle3d !== 'canica');
+  $('floorColor')
+    .closest('.row')!
+    .toggleAttribute('hidden', !is3d || project.style.theme3d !== 'personalizado');
   $('modeDesc').textContent = getMode(project.style.mode).description;
   for (const b of document.querySelectorAll<HTMLButtonElement>('.preset')) {
     const p = PRESETS[b.dataset.p!].style;
@@ -697,7 +772,13 @@ function onChange(c: Ctl, el: HTMLInputElement | HTMLSelectElement): void {
   const out = document.getElementById(c.id + 'V');
   if (out && c.fmt) out.textContent = c.fmt(c.get() as never);
   if (c.after === 'music') {
-    if (c.id === 'start' || c.id === 'dur' || c.id === 'speed') t = 0;
+    if (c.id === 'start' || c.id === 'speed') t = 0;
+    if (c.id === 'start') {
+      // el fin se mantiene donde estaba (si cabe): la duración es lo que cambia
+      const end = Math.max(project.music.start + 0.5, rangeEnd());
+      project.music.duration = Math.round((end - project.music.start) * 10) / 10;
+      syncRange();
+    }
     stop();
     schedule(rebuild);
   } else if (c.after === 'sound') {
@@ -725,8 +806,9 @@ function onChange(c: Ctl, el: HTMLInputElement | HTMLSelectElement): void {
         'ringMode',
         'bgTop',
         'bgBottom',
-        'cameraDirector',
         'ballColor3d',
+        'ballStyle3d',
+        'theme3d',
       ].includes(c.id)
     )
       syncControls();
@@ -820,11 +902,18 @@ function bind(): void {
     d.onMenu((action) => {
       if (action === 'save-project') void saveProject();
       if (action === 'open') void openFromDesktop();
+      if (action === 'youtube') $('ytUrl').focus();
     });
     d.onUpdate((text) => ($('statusText').textContent = text));
+    d.onYoutubeProgress?.((text) => busy(text));
     $('openAny').hidden = false;
     $('openAny').addEventListener('click', () => void openFromDesktop());
   }
+  const yt = () => void loadFromYoutube($<HTMLInputElement>('ytUrl').value);
+  $('ytGo').addEventListener('click', yt);
+  $('ytUrl').addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') yt();
+  });
   $('loadProj').addEventListener('change', (e) => {
     const input = e.target as HTMLInputElement;
     const f = input.files?.[0];
@@ -836,14 +925,26 @@ function bind(): void {
     if (!score) return;
     const r = rb.getBoundingClientRect();
     const s = Math.max(0, Math.min(score.duration - 1, ((e.clientX - r.left) / r.width) * score.duration));
-    project.music.start = Math.round(s * 10) / 10;
-    $<HTMLInputElement>('start').value = String(project.music.start);
-    $('startV').textContent = mmss(project.music.start);
-    t = 0;
-    stop();
-    schedule(rebuild, 60);
-    persist();
+    const dur = project.music.duration > 0 ? project.music.duration : 30;
+    setRange(Math.round(s * 10) / 10, Math.round(s * 10) / 10 + dur);
   };
+  $('end').addEventListener('input', () => setRange(project.music.start, +$<HTMLInputElement>('end').value));
+  const exact = () => {
+    const a = parseTime($<HTMLInputElement>('startExact').value);
+    const z = parseTime($<HTMLInputElement>('endExact').value);
+    if (a === null || z === null) {
+      syncRange();
+      return;
+    }
+    setRange(a, z);
+  };
+  for (const id of ['startExact', 'endExact']) {
+    $(id).addEventListener('change', exact);
+    $(id).addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') exact();
+    });
+  }
+  $('rangeAll').addEventListener('click', () => setRange(0, score ? score.duration : 30));
   rb.addEventListener('pointerdown', (e) => {
     rb.setPointerCapture(e.pointerId);
     pick(e);

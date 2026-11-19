@@ -60,6 +60,17 @@
             <button class="btn" type="button" id="demo">Usar el ejemplo</button>
             <button class="btn" type="button" id="openAny" hidden>Abrir archivo…</button>
           </div>
+          <div class="row two" id="ytRow">
+            <label for="ytUrl">Enlace de YouTube</label>
+            <div class="inline">
+              <input type="url" id="ytUrl" placeholder="https://www.youtube.com/watch?v=…" />
+              <button class="btn small" type="button" id="ytGo">Sacar el MIDI</button>
+            </div>
+          </div>
+          <p class="note" id="ytNote" hidden>
+            Sacar el MIDI de un enlace de YouTube solo funciona en la app de escritorio (descarga el audio con
+            yt-dlp y lo convierte aquí mismo). En la web, sube el audio como archivo.
+          </p>
           <p class="song" id="songName"></p>
           <div class="roll" id="rollBox" title="Toca para elegir dónde empieza el vídeo">
             <canvas id="roll"></canvas>
@@ -74,22 +85,26 @@
                 <option value="bass">Bajo (nota más grave)</option>
               </select>
             </div>
-            <div class="row two">
-              <label for="dur">Duración</label>
-              <select id="dur">
-                <option value="15">15 segundos</option>
-                <option value="30" selected>30 segundos</option>
-                <option value="45">45 segundos</option>
-                <option value="60">60 segundos</option>
-                <option value="90">90 segundos</option>
-                <option value="0">Canción entera</option>
-              </select>
-            </div>
             <div class="row">
-              <label for="start">Empieza en</label
+              <label for="start">Inicio</label
               ><input type="range" id="start" min="0" max="60" step="0.1" value="0" /><output
                 id="startV"
               ></output>
+            </div>
+            <div class="row">
+              <label for="end">Fin</label
+              ><input type="range" id="end" min="0" max="60" step="0.1" value="30" /><output
+                id="endV"
+              ></output>
+            </div>
+            <div class="row two">
+              <label for="rangeExact">Tramo exacto (mm:ss.d)</label>
+              <div class="inline">
+                <input type="text" id="startExact" inputmode="decimal" placeholder="0:00.0" />
+                <span>→</span>
+                <input type="text" id="endExact" inputmode="decimal" placeholder="0:30.0" />
+                <button class="btn small" type="button" id="rangeAll">Entera</button>
+              </div>
             </div>
             <div class="row">
               <label for="speed">Velocidad</label
@@ -221,85 +236,117 @@
           <div class="grid2">
             <div data-mode="platforms3d" class="row">
               <label for="maxBalls">Bolas (máximo)</label
-              ><input type="range" id="maxBalls" min="1" max="6" step="1" /><output id="maxBallsV"></output>
-            </div>
-            <div data-mode="platforms3d" class="row two">
-              <label for="pieces">Piezas del circuito</label
-              ><select id="pieces">
-                <option value="key">Teclas de piano</option>
-                <option value="auto">Automático por tramos (mezcla)</option>
-                <option value="plate">Solo placas</option>
-                <option value="bar">Solo barras de xilófono</option>
-                <option value="drum">Solo tambores</option>
-                <option value="bumper">Solo bumpers</option>
-              </select>
-            </div>
-            <div data-mode="platforms3d" class="row two">
-              <label for="cameraDirector">Cámara con ángulo cambiante (muy suave)</label
-              ><input type="checkbox" id="cameraDirector" />
+              ><input type="range" id="maxBalls" min="1" max="4" step="1" /><output id="maxBallsV"></output>
             </div>
             <div data-mode="platforms3d" class="row two">
               <label for="ballStyle3d">Aspecto de la bola</label
               ><select id="ballStyle3d">
+                <option value="canica">Canica de cristal con vetas</option>
                 <option value="brillo">Brillante (plástico pulido)</option>
                 <option value="cromo">Cromo (metal espejo)</option>
-                <option value="cristal">Cristal</option>
+                <option value="cristal">Cristal liso</option>
                 <option value="mate">Mate</option>
                 <option value="neon">Neón (luminosa)</option>
               </select>
             </div>
             <div data-mode="platforms3d" class="row two">
-              <label for="ballColor3d">Color de la bola</label
-              ><select id="ballColor3d">
-                <option value="nota">El de cada nota (cambia al golpear)</option>
-                <option value="fija">Fijo</option>
-              </select>
+              <label for="ballColorFixed">Color de la bola</label>
+              <div class="swatches"><input type="color" id="ballColorFixed" /></div>
             </div>
             <div data-mode="platforms3d" class="row two">
-              <label for="ballColorFixed">Color fijo de la bola</label>
-              <div class="swatches"><input type="color" id="ballColorFixed" /></div>
+              <label for="ballColor2">Color de las vetas</label>
+              <div class="swatches"><input type="color" id="ballColor2" /></div>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="ballColor3d">La bola cambia de color con las notas</label
+              ><select id="ballColor3d">
+                <option value="fija">No (color fijo)</option>
+                <option value="nota">Sí (el de cada nota)</option>
+              </select>
             </div>
             <div data-mode="platforms3d" class="row">
               <label for="trail3d">Estela de la bola</label
               ><input type="range" id="trail3d" min="0" max="1" step="0.05" /><output id="trail3dV"></output>
             </div>
             <div data-mode="platforms3d" class="row">
+              <label for="ballSize3d">Tamaño de bola</label
+              ><input type="range" id="ballSize3d" min="0.1" max="0.4" step="0.01" /><output
+                id="ballSize3dV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="spread3d">Anchura del circuito</label
+              ><input type="range" id="spread3d" min="1.5" max="5" step="0.1" /><output
+                id="spread3dV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="pace3d">Pendiente</label
+              ><input type="range" id="pace3d" min="0.5" max="2" step="0.05" /><output id="pace3dV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="tileSize">Tamaño de las teclas</label
+              ><input type="range" id="tileSize" min="0.6" max="1.6" step="0.05" /><output
+                id="tileSizeV"
+              ></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
+              <label for="recoil">Hundimiento de las teclas</label
+              ><input type="range" id="recoil" min="0" max="2" step="0.1" /><output id="recoilV"></output>
+            </div>
+            <div data-mode="platforms3d" class="row">
               <label for="seed">Variante</label
               ><input type="range" id="seed" min="1" max="50" step="1" /><output id="seedV"></output>
             </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="bloom">Resplandor</label
-              ><input type="range" id="bloom" min="0" max="1" step="0.05" /><output id="bloomV"></output>
+            <div data-mode="platforms3d" class="row two">
+              <label for="theme3d">Fondo</label
+              ><select id="theme3d">
+                <option value="verde">Verde fieltro</option>
+                <option value="noche">Noche estrellada</option>
+                <option value="estudio">Estudio claro</option>
+                <option value="madera">Madera</option>
+                <option value="marmol">Mármol blanco</option>
+                <option value="neon">Neón</option>
+                <option value="pastel">Pastel</option>
+                <option value="cielo">Cielo</option>
+                <option value="grafito">Grafito</option>
+                <option value="arena">Arena</option>
+                <option value="oceano">Océano</option>
+                <option value="lavanda">Lavanda</option>
+                <option value="burdeos">Burdeos</option>
+                <option value="menta">Menta</option>
+                <option value="personalizado">Color personalizado…</option>
+              </select>
             </div>
             <div data-mode="platforms3d" class="row two">
               <label for="floorColor">Color del fondo</label>
               <div class="swatches"><input type="color" id="floorColor" /></div>
             </div>
-            <div data-mode="platforms3d" class="row two">
-              <label for="material3d">Material</label
-              ><select id="material3d">
-                <option value="cromo">Cromo</option>
-                <option value="color">Color de la nota</option>
-                <option value="mate">Blanco mate</option>
-              </select>
+            <div data-mode="platforms3d" class="row">
+              <label for="bloom">Resplandor</label
+              ><input type="range" id="bloom" min="0" max="1" step="0.05" /><output id="bloomV"></output>
             </div>
             <div data-mode="platforms3d" class="row">
-              <label for="cameraAzimuth">Giro de cámara</label
-              ><input type="range" id="cameraAzimuth" min="-80" max="80" step="1" /><output
-                id="cameraAzimuthV"
+              <label for="cameraDistance">Distancia de cámara</label
+              ><input type="range" id="cameraDistance" min="0.7" max="2" step="0.05" /><output
+                id="cameraDistanceV"
               ></output>
             </div>
             <div data-mode="platforms3d" class="row">
               <label for="cameraElevation">Altura de cámara</label
-              ><input type="range" id="cameraElevation" min="30" max="80" step="1" /><output
+              ><input type="range" id="cameraElevation" min="0" max="45" step="1" /><output
                 id="cameraElevationV"
               ></output>
             </div>
             <div data-mode="platforms3d" class="row">
-              <label for="cameraDistance">Distancia</label
-              ><input type="range" id="cameraDistance" min="5" max="16" step="0.5" /><output
-                id="cameraDistanceV"
+              <label for="cameraAzimuth">Giro de cámara</label
+              ><input type="range" id="cameraAzimuth" min="-30" max="30" step="1" /><output
+                id="cameraAzimuthV"
               ></output>
+            </div>
+            <div data-mode="platforms3d" class="row two">
+              <label for="cameraDirector">Vaivén sutil de la cámara</label
+              ><input type="checkbox" id="cameraDirector" />
             </div>
             <div data-mode="platforms3d" class="row">
               <label for="lightAngle">Dirección de la luz</label
@@ -312,35 +359,6 @@
               ><input type="range" id="shadowSoftness" min="0" max="1" step="0.05" /><output
                 id="shadowSoftnessV"
               ></output>
-            </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="pace3d">Avance</label
-              ><input type="range" id="pace3d" min="1" max="5" step="0.1" /><output id="pace3dV"></output>
-            </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="spread3d">Anchura del camino</label
-              ><input type="range" id="spread3d" min="0.5" max="4" step="0.1" /><output
-                id="spread3dV"
-              ></output>
-            </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="tileSize">Tamaño de placa</label
-              ><input type="range" id="tileSize" min="0.6" max="1.6" step="0.05" /><output
-                id="tileSizeV"
-              ></output>
-            </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="ballSize3d">Tamaño de bola</label
-              ><input type="range" id="ballSize3d" min="0.1" max="0.4" step="0.01" /><output
-                id="ballSize3dV"
-              ></output>
-            </div>
-            <div data-mode="platforms3d" class="row">
-              <label for="recoil">Rebote de placa</label
-              ><input type="range" id="recoil" min="0" max="2" step="0.1" /><output id="recoilV"></output>
-            </div>
-            <div data-mode="platforms3d" class="row two">
-              <label for="heightByPitch">Agudos más altos</label><input type="checkbox" id="heightByPitch" />
             </div>
             <div data-mode="platforms" class="row">
               <label for="platformLength">Ancho de plataforma</label

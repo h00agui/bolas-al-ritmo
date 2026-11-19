@@ -52,9 +52,12 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await browser.newPage();
-page.on('pageerror', (e) => console.error('pageerror:', e.message));
+page.on('pageerror', (e) => console.error('pageerror:', e.stack ?? e.message));
 page.on('console', (m) => {
-  if (m.type() === 'error') console.error('console:', m.text());
+  if (m.type() === 'error') {
+    const loc = m.location();
+    console.error('console:', m.text(), loc ? `(${loc.url?.split('/').pop()}:${loc.lineNumber})` : '');
+  }
 });
 await page.setViewport({ width: 1280, height: 1000 });
 await page.goto(`http://localhost:${port}/?backend=cpu`, { waitUntil: 'networkidle0' });

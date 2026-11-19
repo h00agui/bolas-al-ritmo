@@ -3,16 +3,7 @@ import fs from 'node:fs';
 import { parseMidi } from '@core/midi/parse.ts';
 import { scoreToHits, hitsDuration } from '@core/music/hits.ts';
 import { mergeBallHits, splitHitsIntoBalls } from '@core/music/voices.ts';
-import {
-  ballActive,
-  ballAtPlan,
-  cameraAt,
-  composeSegments,
-  onRail,
-  planCircuit,
-  recoilAt,
-  shakeAt,
-} from '@core/modes/circuit.plan.ts';
+import { ballActive, ballAtPlan, cameraAt, onRail, planCircuit, recoilAt } from '@core/modes/circuit.plan.ts';
 import { DEFAULT_STYLE } from '@core/scene/style.ts';
 import { buildProject, defaultProject } from '@core/project.ts';
 
@@ -41,7 +32,7 @@ describe('reparto entre bolas', () => {
 });
 
 describe('planCircuit', () => {
-  const st = { ...DEFAULT_STYLE, maxBalls: 3, pieces: 'auto' as const };
+  const st = { ...DEFAULT_STYLE, maxBalls: 3 };
   const plan = planCircuit(raw, hitsDuration(raw), st, { minGap: 0.2 });
 
   it('reparte en varias bolas, cada una llega exacta a sus piezas y el circuito desciende', () => {
@@ -60,27 +51,66 @@ describe('planCircuit', () => {
       }
   });
 
-  it('las piezas no se solapan entre sí (ni entre bolas distintas)', () => {
+  it('las teclas quedan dentro del circuito, sin solaparse, y cada bola en su franja', () => {
     const ps = plan.pieces;
+    for (const p of ps) expect(Math.abs(p.P[0])).toBeLessThan(st.spread3d + 0.05);
     for (let i = 0; i < ps.length; i++)
       for (let j = i + 1; j < ps.length; j++) {
-        if (Math.abs(ps[i].P[1] - ps[j].P[1]) > 2.5) continue;
-        const d = Math.hypot(ps[i].P[0] - ps[j].P[0], ps[i].P[1] - ps[j].P[1]);
-        // misma bola: holgura estética; bolas distintas (cada una en su carril): que no se toquen
-        expect(d).toBeGreaterThan(ps[i].ball === ps[j].ball ? 0.7 : 0.5);
+        if (ps[i].ball !== ps[j].ball) continue;
+        const dy = Math.abs(ps[i].P[1] - ps[j].P[1]);
+        const dx = Math.abs(ps[i].P[0] - ps[j].P[0]);
+        // dos teclas de la misma bola nunca ocupan el mismo sitio (solapadas en x solo a distinta altura)
+        expect(dy > 0.28 || dx > 0.6).toBe(true);
       }
+    // con varias bolas, cada una en su franja horizontal
+    const nb = plan.balls.length;
+    for (const p of ps) {
+      const bandW = (2 * st.spread3d) / nb - 0.3;
+      const bandC = -st.spread3d + ((2 * st.spread3d) / nb) * (p.ball + 0.5);
+      expect(Math.abs(p.P[0] - bandC)).toBeLessThan(bandW / 2 + 0.05);
+    }
   });
 
-  it('los tramos cubren todo el vídeo y mezclan piezas y planos', () => {
-    const segs = plan.segments;
-    expect(segs[0].start).toBe(0);
-    expect(segs[segs.length - 1].end).toBeGreaterThan(plan.duration);
-    const kinds = new Set(segs.map((s) => s.kind));
-    const shots = new Set(segs.map((s) => s.shot));
-    expect(kinds.size).toBeGreaterThan(1);
-    expect(shots.size).toBeGreaterThan(1);
-    const fixed = composeSegments(plan.audioHits, plan.duration, { ...st, pieces: 'drum' });
-    expect(fixed.every((s) => s.kind === 'drum')).toBe(true);
+  it('va de un lado a otro según el ritmo: pozo con paredes alternas en lo rápido y rampas en lo medio', () => {
+    const melody = scoreToHits(score, { duration: 30, minGap: 0.03, selection: 'melody' });
+    const solo = planCircuit(melody, hitsDuration(melody), { ...st, maxBalls: 1 }, { minGap: 0.1 });
+    const b = solo.balls[0];
+    const keys = b.pieces.map((i) => solo.pieces[i]);
+    // teclas de pozo: alternan lado (la punta mira hacia dentro, en sentidos opuestos)
+    let shaftPairs = 0;
+    for (let k = 1; k < keys.length; k++)
+      if (keys[k].shaft && keys[k - 1].shaft) {
+        expect(keys[k].tip).toBe(-keys[k - 1].tip);
+        expect(Math.sign(keys[k].P[0] - keys[k - 1].P[0])).toBe(keys[k - 1].tip);
+        expect(keys[k].n[1]).toBeLessThan(0.95); // inclinadas hacia dentro
+        shaftPairs++;
+      }
+    expect(shaftPairs).toBeGreaterThan(5);
+    // a ritmo medio (una nota cada medio segundo): rampa, la bola avanza en horizontal más de lo que baja
+    const medium = Array.from({ length: 40 }, (_, i) => ({
+      t: 0.5 + i * 0.5,
+      strength: 0.7,
+      notes: [{ midi: 60 + ((i * 7) % 12), velocity: 0.8, duration: 0.3 }],
+    }));
+    const ramp = planCircuit(medium, 21, { ...st, maxBalls: 1 }, { minGap: 0.1 });
+    const rk = ramp.balls[0].pieces.map((i) => ramp.pieces[i]);
+    expect(rk.every((p) => !p.shaft)).toBe(true);
+    for (let k = 1; k < rk.length; k++) {
+      const dx = Math.abs(rk[k].P[0] - rk[k - 1].P[0]);
+      const dy = rk[k - 1].P[1] - rk[k].P[1];
+      expect(dy).toBeGreaterThan(0.2);
+      expect(dx).toBeGreaterThan(dy * 0.8);
+    }
+    // cambia de sentido al llegar al borde: varias veces, pero no a cada momento
+    let turns = 0;
+    let dir = 0;
+    for (let k = 1; k < rk.length; k++) {
+      const d = Math.sign(rk[k].P[0] - rk[k - 1].P[0]);
+      if (d && dir && d !== dir) turns++;
+      if (d) dir = d;
+    }
+    expect(turns).toBeGreaterThanOrEqual(2);
+    expect(turns).toBeLessThan(rk.length / 4);
   });
 
   it('la cámara encuadra siempre a todas las bolas en escena', () => {
@@ -119,8 +149,6 @@ describe('planCircuit', () => {
       }
     }
     expect(checked).toBeGreaterThan(50);
-    const strong = plan.audioHits.find((h) => h.strength > 0.8);
-    if (strong) expect(shakeAt(plan, strong.t + 0.02)).toBeGreaterThan(0);
     expect(recoilAt(2, 1, 1)).toBe(0);
   });
 
@@ -147,20 +175,30 @@ describe('planCircuit', () => {
       notes: [{ midi: 60 + ((i * 5) % 12), velocity: 0.8, duration: 0.4 }],
     }));
     const sparse = planCircuit(hits, 22, DEFAULT_STYLE, { minGap: 0.1 });
-    expect(sparse.rails.length).toBeGreaterThanOrEqual(5);
+    expect(sparse.rails.length).toBeGreaterThanOrEqual(4);
     const b = sparse.balls[0];
     for (const r of sparse.rails) {
       expect(r.tA).toBeGreaterThan(b.T[r.k]);
       expect(r.tB).toBeLessThan(b.T[r.k + 1]);
       for (let i = 1; i < r.pts.length; i++) expect(r.pts[i][1]).toBeLessThanOrEqual(r.pts[i - 1][1] + 1e-6);
       expect(onRail(b, sparse, (r.tA + r.tB) / 2)).toBe(true);
+      // los carriles son rectos: fuera de las curvas en U la dirección horizontal se mantiene
+      let flips = 0;
+      let dir = 0;
+      for (let i = 1; i < r.pts.length; i++) {
+        const d = Math.sign(r.pts[i][0] - r.pts[i - 1][0]);
+        if (d && dir && d !== dir) flips++;
+        if (d) dir = d;
+      }
+      expect(flips).toBeLessThan(6);
+      for (const p of r.pts) expect(Math.abs(p[0])).toBeLessThan(DEFAULT_STYLE.spread3d + 0.05);
       // la bola rueda a una velocidad creíble (ni flota ni vuela)
       let len = 0;
       for (let i = 1; i < r.pts.length; i++)
         len += Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]);
       const v = len / (r.tB - r.tA);
-      expect(v).toBeGreaterThan(1.5);
-      expect(v).toBeLessThan(6);
+      expect(v).toBeGreaterThan(1.2);
+      expect(v).toBeLessThan(5);
     }
     let prev: number[] | null = null;
     for (let t = b.pre!.tRel; t < b.T[b.T.length - 1]; t += 1 / 120) {

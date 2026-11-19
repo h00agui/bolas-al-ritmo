@@ -1,8 +1,16 @@
-// Planificador del Circuito 3D: un marble run de pared. Las piezas cuelgan de un fondo vertical y las
-// bolas caen de arriba abajo por gravedad, de pieza en pieza, llegando exactas a cada nota. Cuando entre
-// dos notas pasan más de unas décimas, la bola no flota: baja rodando por un carril (serpentina) hasta la
-// pieza siguiente. Sin WebGL: se prueba en Node. Unidades: 1 ≈ el largo de una placa. y hacia arriba,
-// z hacia la cámara (la pared está en z = WALL_Z).
+// Planificador del Circuito 3D: un marble run de pared hecho solo de teclas de piano y carriles.
+//
+// La bola sigue un trazado fluido que va de un lado a otro de la pared según las frases del MIDI: en cada
+// frase lleva un rumbo (más o menos horizontal) y entre frases lo cambia con una curva suave. Cómo salta
+// lo decide el ritmo:
+//  - notas muy seguidas: zigzag entre dos hileras de teclas inclinadas hacia dentro (un "pozo"); en los
+//    pasajes rápidos largos las hileras se vuelven paredes rectas con barra un rato, y luego se sueltan;
+//  - notas a ritmo medio: salta de tecla en tecla avanzando en horizontal y bajando poco a poco;
+//  - notas lejanas: un carril recto e inclinado por el que rueda; al llegar al borde una curva en U la
+//    lleva al carril de vuelta (como en los marble runs), y al final sale volando hasta la tecla siguiente.
+// Las teclas quedan sueltas pero colocadas con intención (curvas, tramos rectos solo a ratos, pequeñas
+// variaciones de ángulo). Todo llega exacto a cada nota. Sin WebGL: se prueba en Node.
+// Unidades: 1 ≈ el largo de una tecla. y hacia arriba, z hacia la cámara (la pared está en z = WALL_Z).
 import type { RGB } from '../color.ts';
 import { noteName } from '../music/names.ts';
 import { mergeBallHits, splitHitsIntoBalls } from '../music/voices.ts';
@@ -11,24 +19,25 @@ import { hitColors, startColor, type SceneStyle } from '../scene/style.ts';
 import type { Hit } from '../types.ts';
 
 export type V3 = [number, number, number];
-export type PieceKind = 'key' | 'plate' | 'bar' | 'drum' | 'bumper';
-export const PIECE_KINDS: PieceKind[] = ['key', 'plate', 'bar', 'drum', 'bumper'];
 
 export interface Piece {
-  kind: PieceKind;
+  kind: 'key';
   ball: number;
   k: number; // índice del choque dentro de su bola
   t: number;
   P: V3; // centro de la bola en el choque
-  n: V3; // normal de la superficie
-  size: number; // largo (tecla/placa/barra) o radio (tambor/bumper)
+  n: V3; // normal de la cara superior de la tecla
+  tip: 1 | -1; // lado hacia el que se inclina la tecla (en el pozo, hacia dentro)
+  yaw: number; // pequeño giro estético alrededor de la normal (radianes)
+  size: number; // largo de la tecla
   black: boolean; // tecla negra (sostenido)
+  shaft: boolean; // tecla de una pared del pozo
   col: RGB;
   name: string;
   strength: number;
 }
 
-/** Carril por el que rueda una bola entre dos notas lejanas. */
+/** Carril por el que rueda una bola entre dos notas lejanas (rectas inclinadas y curvas en U). */
 export interface Rail {
   ball: number;
   k: number; // intervalo (entre el choque k y el k+1)
@@ -36,6 +45,15 @@ export interface Rail {
   tB: number; // lo deja
   pts: V3[]; // centro de la bola a lo largo del carril
   times: number[]; // instante en cada punto (absoluto)
+}
+
+/** Pozo: dos paredes de teclas entre las que rebota la bola. */
+export interface Shaft {
+  ball: number;
+  xL: number; // posición de la barra de la pared izquierda
+  xR: number;
+  yTop: number;
+  yBottom: number;
 }
 
 export interface Flight3 {
@@ -57,14 +75,6 @@ export interface BallPlan {
   pieces: number[]; // índice en plan.pieces de cada choque
 }
 
-export type ShotKind = 'front' | 'left' | 'right' | 'high' | 'low';
-export interface Segment {
-  start: number;
-  end: number;
-  kind: PieceKind;
-  shot: ShotKind;
-}
-
 export interface CircuitPlan {
   kind: 'platforms3d';
   duration: number;
@@ -72,7 +82,7 @@ export interface CircuitPlan {
   balls: BallPlan[];
   pieces: Piece[];
   rails: Rail[];
-  segments: Segment[];
+  shafts: Shaft[];
   audioHits: Hit[];
   audioT: number[];
   /** cámara a CAM_HZ: por fotograma [px, py, pz, lx, ly, lz, fov] */
@@ -90,252 +100,143 @@ export interface PlanOptions {
 
 const CAM_HZ = 60;
 export const WALL_Z = -1.2;
+const G0 = 14; // gravedad "real" (unidades/s²) con gravity = 1
+/** notas separadas como mucho esto van en un pozo de dos paredes */
+export const FAST_DT = 0.3;
 /** a partir de esta separación entre notas la bola va por carril */
-export const RAIL_DT = 0.7;
-const RAIL_IN = 0.25; // s del salto desde la pieza al carril
-const RAIL_OUT = 0.2; // s de la salida del carril a la pieza
-const RAIL_VMAX = 4.8; // unidades/s
-const RAIL_ACC = 3; // aceleración efectiva rodando (gravedad con rozamiento)
-/** ángulos de cámara suaves: az giro horizontal, el inclinación (grados) */
-export const SHOTS: Record<ShotKind, { az: number; el: number }> = {
-  front: { az: 0, el: 26 },
-  left: { az: -16, el: 30 },
-  right: { az: 16, el: 22 },
-  high: { az: -8, el: 38 },
-  low: { az: 6, el: 14 },
-};
-const KIND_MIN_NY: Record<PieceKind, number> = { key: 0.85, plate: 0.6, bar: 0.78, drum: 0.9, bumper: 0.65 };
-const KIND_CLEAR: Record<PieceKind, number> = { key: 0.9, plate: 1.15, bar: 1.25, drum: 1.3, bumper: 0.95 };
+export const RAIL_DT = 0.9;
+const RAIL_IN = 0.25; // s del salto desde la tecla al carril
+const RAIL_OUT = 0.22; // s de la salida del carril a la tecla
+const RAIL_VMAX = 4.5; // unidades/s
+const RAIL_MU = 0.1; // rozamiento al rodar
+const U_RADIUS = 0.34; // radio de las curvas en U
+const SHAFT_GAP = 1.3; // distancia horizontal entre los puntos de contacto de las dos hileras
+const SHAFT_TILT = 38; // inclinación (grados) de las teclas del pozo hacia dentro
+const KEY_LEN_WHITE = 1.6;
+const KEY_LEN_BLACK = 1.05;
 
 const sr = (seed: number, k: number) => rnd(seed * 0.173 + 1, k + 0.5);
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12);
-/** altura del bote entre dos golpes separados dt segundos (bajo para que domine la caída) */
-const hopHeight = (dt: number) => Math.max(0.2, Math.min(1.2, 0.6 * Math.sqrt(dt / 0.4)));
 const norm = (v: V3): V3 => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 };
-
-/** Divide los choques en tramos por frases (silencios) o cada ~7 s, y asigna pieza y plano a cada tramo. */
-export function composeSegments(hits: Hit[], duration: number, st: SceneStyle, compact = false): Segment[] {
-  const seed = st.seed;
-  const bounds: number[] = [0];
-  let segStart = 0;
-  for (let i = 1; i < hits.length; i++) {
-    const gap = hits[i].t - hits[i - 1].t;
-    const len = hits[i].t - segStart;
-    if ((gap > 0.55 && len > 2.5) || len > 7) {
-      bounds.push(hits[i].t - Math.min(gap, 0.3) / 2);
-      segStart = hits[i].t;
-    }
-  }
-  bounds.push(duration + 1);
-  const segments: Segment[] = [];
-  const shotOrder: ShotKind[] = ['front', 'left', 'high', 'right', 'low', 'front'];
-  let prevKind: PieceKind | null = null;
-  for (let i = 0; i < bounds.length - 1; i++) {
-    const a = bounds[i];
-    const b = bounds[i + 1];
-    const inSeg = hits.filter((h) => h.t >= a && h.t < b);
-    const midis = inSeg.flatMap((h) => h.notes.map((n) => n.midi));
-    const meanMidi = midis.length ? midis.reduce((x, y) => x + y, 0) / midis.length : 64;
-    const density = inSeg.length / Math.max(1, b - a);
-    let kind: PieceKind;
-    if (st.pieces !== 'auto') kind = st.pieces;
-    else if (compact) kind = sr(seed, i) < 0.6 ? 'key' : 'bumper';
-    else {
-      const r = sr(seed, i);
-      if (meanMidi < 55) kind = r < 0.7 ? 'drum' : 'bumper';
-      else if (density > 5) kind = r < 0.55 ? 'bumper' : 'key';
-      else if (meanMidi > 70) kind = r < 0.5 ? 'bar' : 'key';
-      else kind = r < 0.5 ? 'key' : r < 0.75 ? 'bar' : 'plate';
-      if (kind === prevKind && !compact)
-        kind = (['key', 'bar', 'plate', 'drum', 'bumper'] as PieceKind[]).find(
-          (x) => x !== prevKind && (x !== 'drum' || meanMidi < 68),
-        )!;
-    }
-    prevKind = kind;
-    let shot: ShotKind = shotOrder[(i + Math.floor(sr(seed, i + 100) * 2)) % shotOrder.length];
-    if (i === 0) shot = 'front';
-    segments.push({ start: a, end: b, kind, shot });
-  }
-  return segments;
-}
-
-function kindSize(kind: PieceKind, midi: number, lo: number, hi: number, st: SceneStyle): number {
-  const f = hi > lo ? (midi - lo) / (hi - lo) : 0.5;
-  switch (kind) {
-    case 'key':
-      return st.tileSize * (isBlack(midi) ? 1.1 : 1.7);
-    case 'bar':
-      return st.tileSize * (1.5 - 0.7 * f);
-    case 'drum':
-      return st.tileSize * (0.58 - 0.12 * f);
-    case 'bumper':
-      return st.tileSize * 0.34;
-    default:
-      return st.tileSize;
-  }
-}
-
-/** Muestra una Catmull-Rom uniforme por los puntos dados (sin los dos extremos, que solo fijan tangentes). */
-function catmullRom(pts: V3[], per: number): V3[] {
-  const out: V3[] = [];
-  for (let i = 1; i < pts.length - 2; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2];
-    for (let s = 0; s < per; s++) {
-      const u = s / per;
-      const u2 = u * u;
-      const u3 = u2 * u;
-      const q: V3 = [0, 0, 0];
-      for (let c = 0; c < 3; c++)
-        q[c] =
-          0.5 *
-          (2 * p1[c] +
-            (-p0[c] + p2[c]) * u +
-            (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * u2 +
-            (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * u3);
-      out.push(q);
-    }
-  }
-  out.push([...pts[pts.length - 2]] as V3);
-  return out;
-}
-
-interface RailEnv {
-  laneX: number;
-  laneHalf: number;
-  spread: number;
-  g0: number;
-  seed: number;
-  ball: number;
-  blocked: (x: number, y: number, clear: number) => boolean;
-}
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 interface RailBuild {
   rail: Omit<Rail, 'ball' | 'k'>;
-  vOut: V3; // velocidad al dejar la pieza k
+  vOut: V3; // velocidad al dejar la tecla k
   exit: { p: V3; v: V3; g: number };
-  vinNext: V3; // velocidad al llegar a la pieza k+1
+  vinNext: V3; // velocidad al llegar a la tecla k+1
+  Pn: V3; // dónde cae la bola (tecla k+1)
+  dir: 1 | -1; // sentido de avance al salir
 }
 
-/** Construye el carril entre la pieza k (en Pk, instante tk) y la siguiente (Pn, tn). */
-function buildRail(Pk: V3, Pn: V3, tk: number, tn: number, k: number, env: RailEnv): RailBuild {
-  const g0 = env.g0;
+/**
+ * Construye el carril desde la tecla k (Pk, instante tk, avanzando en `dir`) hasta la nota siguiente (tn):
+ * rectas inclinadas y curvas en U al llegar al borde; el carril termina justo cuando toca salir volando
+ * hacia la tecla siguiente, que se coloca donde cae la bola.
+ */
+function buildRail(
+  Pk: V3,
+  tk: number,
+  tn: number,
+  dirIn: 1 | -1,
+  bounds: { lo: number; hi: number },
+  g0: number,
+  slope: number,
+  zNext: number,
+): RailBuild {
   const tA = tk + RAIL_IN;
   const tB = tn - RAIL_OUT;
-  const D = Math.max(0.05, tB - tA);
-  const sA =
-    Math.abs(Pk[0] - env.laneX) > env.laneHalf * 0.5
-      ? env.laneX >= Pk[0]
-        ? 1
-        : -1
-      : Pn[0] >= Pk[0]
-        ? 1
-        : -1;
-  const A: V3 = [Pk[0] + 0.4 * sA, Pk[1] - 0.5, Pk[2]];
-  const vOut: V3 = [
-    (A[0] - Pk[0]) / RAIL_IN,
-    (A[1] - Pk[1] + 0.5 * g0 * RAIL_IN * RAIL_IN) / RAIL_IN,
-    (A[2] - Pk[2]) / RAIL_IN,
-  ];
-  const vA: V3 = [vOut[0], vOut[1] - g0 * RAIL_IN, vOut[2]];
-  const v0 = Math.max(1.5, Math.min(3.5, Math.hypot(vA[0], vA[1], vA[2])));
-  const dirA = norm(vA);
-  // sale del carril hacia la pieza siguiente desde el lado del centro del carril (para no salirse de él)
-  const sE = Pn[0] >= env.laneX ? 1 : -1;
-  const dirE = norm([0.55 * sE, -0.83, 0]);
-  const endPoint = (vE: number): V3 => [
-    Pn[0] - vE * dirE[0] * RAIL_OUT,
-    Pn[1] - vE * dirE[1] * RAIL_OUT + 0.5 * g0 * RAIL_OUT * RAIL_OUT,
-    Pn[2],
-  ];
-  const ampMax = Math.max(0.3, Math.min(env.laneHalf * 0.75, env.spread - 0.2, 0.9));
-
-  interface Cand {
-    pts: V3[];
-    times: number[];
-    kappa: number;
-    bad: number;
-    vEnd: number;
-    n: number;
-  }
-  const build = (B: V3, amp: number, n: number, flip: number): Cand => {
-    const ctrl: V3[] = [[A[0] - dirA[0] * 0.5, A[1] - dirA[1] * 0.5, A[2]], A];
-    for (let i = 1; i < n; i++) {
-      const f = i / n;
-      const sgn = (i % 2 ? sA : -sA) * flip;
-      const x = Math.max(env.laneX - env.laneHalf, Math.min(env.laneX + env.laneHalf, env.laneX + sgn * amp));
-      const wob = 0.18 * (rnd(k + 3, i + env.ball + env.seed) - 0.5);
-      ctrl.push([x, A[1] + (B[1] - A[1]) * f + wob, A[2] + (B[2] - A[2]) * f]);
-    }
-    ctrl.push(B, [B[0] + dirE[0] * 0.5, B[1] + dirE[1] * 0.5, B[2]]);
-    const pts = catmullRom(ctrl, 14);
-    // perfil de velocidad: gana velocidad al bajar (con rozamiento) hasta un máximo
-    const v: number[] = pts.map((p) =>
-      Math.min(RAIL_VMAX, Math.sqrt(v0 * v0 + 2 * RAIL_ACC * Math.max(0, A[1] - p[1]))),
-    );
-    const tt: number[] = [0];
-    for (let i = 1; i < pts.length; i++) {
-      const ds = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
-      tt.push(tt[i - 1] + ds / (0.5 * (v[i] + v[i - 1])));
-    }
-    const kappa = tt[tt.length - 1] / D;
-    let bad = 0;
-    for (let i = 0; i < pts.length; i += 2) if (env.blocked(pts[i][0], pts[i][1], 0.6)) bad++;
-    return { pts, times: tt.map((x) => tA + x / kappa), kappa, bad, vEnd: v[v.length - 1], n };
+  const D = Math.max(0.1, tB - tA);
+  let dir0 = dirIn;
+  // si la tecla está ya junto al borde, el carril arranca hacia el centro
+  if (dir0 > 0 ? Pk[0] > bounds.hi - 1.4 : Pk[0] < bounds.lo + 1.4) dir0 = (dir0 * -1) as 1 | -1;
+  const A: V3 = [Pk[0] + 0.45 * dir0, Pk[1] - 0.45, Pk[2]];
+  const vOut: V3 = [(A[0] - Pk[0]) / RAIL_IN, (A[1] - Pk[1] + 0.5 * g0 * RAIL_IN * RAIL_IN) / RAIL_IN, 0];
+  const vA: V3 = [vOut[0], vOut[1] - g0 * RAIL_IN, 0];
+  let v = clamp(Math.hypot(vA[0], vA[1]), 1.6, 3.2);
+  const alpha = (20 * clamp(slope, 0.5, 2) * Math.PI) / 180; // inclinación de las rectas
+  const ds = 0.04;
+  const pts: V3[] = [A];
+  const times: number[] = [tA];
+  let x = A[0];
+  let y = A[1];
+  let dir = dir0;
+  let t = tA;
+  const zA = A[2];
+  const zStep = (zNext - zA) / Math.max(1, D); // la profundidad cambia muy despacio a lo largo del carril
+  const accel = (tx: number, ty: number) => {
+    // tangente unitaria (tx, ty): aceleración al rodar con rozamiento, acotada por una velocidad máxima
+    const sinA = -ty;
+    const cosA = Math.abs(tx);
+    return g0 * (5 / 7) * (sinA - RAIL_MU * cosA);
   };
-  const score = (c: Cand) => Math.abs(Math.log(c.kappa)) + 2 * c.bad;
-  /** la amplitud se ajusta por bisección para que el tiempo físico coincida con el disponible */
-  const fit = (B: V3, n: number, flip: number): Cand => {
-    let lo = 0.15;
-    let hi = ampMax;
-    let c = build(B, hi, n, flip);
-    // kappa > 1: el recorrido es más largo de lo que la bola puede rodar en el tiempo disponible → menos amplitud
-    if (c.kappa > 1)
-      for (let it = 0; it < 10; it++) {
-        const mid = (lo + hi) / 2;
-        const cm = build(B, mid, n, flip);
-        if (cm.kappa > 1) hi = mid;
-        else lo = mid;
-        c = cm;
-      }
-    return c;
+  const push = (nx: number, ny: number, tx: number, ty: number) => {
+    const a = accel(tx, ty);
+    v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 0.8, RAIL_VMAX);
+    t += ds / v;
+    x = nx;
+    y = ny;
+    pts.push([x, y, zA + zStep * (t - tA)]);
+    times.push(t);
   };
-  // nº de curvas de la serpentina según el recorrido que hace falta para no ir ni muy lento ni muy rápido
-  let B = endPoint(4);
-  const dy = Math.max(0.3, A[1] - B[1]);
-  const lNeed = D * Math.min(RAIL_VMAX, v0 + 0.5 * RAIL_ACC * Math.min(D, 1.5));
-  const lateral = Math.sqrt(Math.max(0, lNeed * lNeed - dy * dy));
-  // carriles cortos: una sola curva (una serpentina apretada parece un alambre)
-  // (y cada curva debe tener al menos ~1,2 unidades de caída para que no parezca un muelle)
-  const nMax = Math.max(1, Math.min(8, Math.floor(dy / 1.2)));
-  const nBase = D < 0.8 ? 1 : Math.max(1, Math.min(nMax, Math.round(lateral / (2 * ampMax) + 0.5)));
-  let best: Cand | null = null;
-  for (const n of D < 0.8
-    ? [1, Math.min(2, nMax)]
-    : [nBase, Math.min(nMax, nBase + 1), Math.max(1, nBase - 1)])
-    for (const flip of [1, -1]) {
-      const c = fit(B, n, flip);
-      if (!best || score(c) < score(best)) best = c;
+  // margen en el borde para que la tecla de llegada quepa dentro del circuito
+  const edge = (d: 1 | -1) => (d > 0 ? bounds.hi - 1.1 : bounds.lo + 1.1);
+  let guard = 0;
+  let endTangent: [number, number] = [dir * Math.cos(alpha), -Math.sin(alpha)];
+  while (t < tB && guard++ < 20000) {
+    // recta hasta el borde (o hasta que se acabe el tiempo)
+    const tx = dir * Math.cos(alpha);
+    const ty = -Math.sin(alpha);
+    while (t < tB && dir * x < dir * edge(dir)) push(x + tx * ds, y + ty * ds, tx, ty);
+    endTangent = [tx, ty];
+    if (t >= tB) break;
+    // ¿queda tiempo para una curva en U entera y algo de recta después? si no, termina aquí
+    const uTime = (Math.PI * U_RADIUS) / Math.max(1, v);
+    if (tB - t < uTime + 0.25) break;
+    // curva en U hacia abajo: de avanzar en `dir` a avanzar en -dir
+    const cx = x;
+    const cy = y - U_RADIUS;
+    const steps = Math.max(8, Math.round((Math.PI * U_RADIUS) / ds));
+    for (let i = 1; i <= steps && t < tB; i++) {
+      const th = Math.PI / 2 - (Math.PI * i) / steps;
+      const nx = cx + dir * U_RADIUS * Math.cos(th);
+      const ny = cy + U_RADIUS * Math.sin(th);
+      const tx2 = -dir * Math.sin(th);
+      const ty2 = Math.cos(th);
+      push(nx, ny, tx2, ty2);
+      endTangent = [tx2, ty2];
     }
-  // segunda pasada con la velocidad real de salida (ajusta el punto final)
-  const vE = Math.max(2, Math.min(RAIL_VMAX, best!.vEnd / Math.max(0.5, best!.kappa)));
-  B = endPoint(vE);
-  let fin: Cand | null = null;
-  for (const flip of [1, -1]) {
-    const c = fit(B, best!.n, flip);
-    if (!fin || score(c) < score(fin)) fin = c;
+    dir = (dir * -1) as 1 | -1;
+    v *= 0.92; // la curva frena un poco
   }
-  const vExit: V3 = [vE * dirE[0], vE * dirE[1], vE * dirE[2]];
+  // (nunca menos de tres muestras: un tramito recto aunque el tiempo fuera mínimo)
+  while (pts.length < 3) push(x + endTangent[0] * ds, y + endTangent[1] * ds, endTangent[0], endTangent[1]);
+  // el carril acaba donde está la bola cuando toca salir: sale volando con la velocidad que lleva
+  const B: V3 = pts[pts.length - 1];
+  times[times.length - 1] = tB;
+  const vE = Math.max(1.5, v);
+  const vExit: V3 = [vE * endTangent[0], vE * endTangent[1], 0];
+  const Pn: V3 = [
+    B[0] + vExit[0] * RAIL_OUT,
+    B[1] + vExit[1] * RAIL_OUT - 0.5 * g0 * RAIL_OUT * RAIL_OUT,
+    zNext,
+  ];
+  // si cae fuera del circuito (salió en plena recta junto al borde), se acorta la salida hacia dentro
+  if (Pn[0] > bounds.hi - 0.3 || Pn[0] < bounds.lo + 0.3) {
+    Pn[0] = clamp(Pn[0], bounds.lo + 0.3, bounds.hi - 0.3);
+    vExit[0] = (Pn[0] - B[0]) / RAIL_OUT;
+  }
+  const dirOut = (vExit[0] >= 0 ? 1 : -1) as 1 | -1;
   return {
-    rail: { tA, tB, pts: fin!.pts, times: fin!.times },
+    rail: { tA, tB, pts, times },
     vOut,
     exit: { p: B, v: vExit, g: g0 },
-    vinNext: [vExit[0], vExit[1] - g0 * RAIL_OUT, vExit[2]],
+    vinNext: [vExit[0], vExit[1] - g0 * RAIL_OUT, 0],
+    Pn,
+    dir: dirOut,
   };
 }
 
@@ -346,10 +247,8 @@ export function planCircuit(
   opts: PlanOptions = { minGap: 0.1 },
 ): CircuitPlan {
   const r = st.ballSize3d;
-  const L = st.tileSize;
   const split = splitHitsIntoBalls(hits, { maxBalls: st.maxBalls, minGap: opts.minGap });
   const audioHits = mergeBallHits(split);
-  const segments = composeSegments(audioHits, duration, st, split.length > 1);
   const plan: CircuitPlan = {
     kind: 'platforms3d',
     duration,
@@ -357,7 +256,7 @@ export function planCircuit(
     balls: [],
     pieces: [],
     rails: [],
-    segments,
+    shafts: [],
     audioHits,
     audioT: audioHits.map((h) => h.t),
     cam: new Float32Array(0),
@@ -367,36 +266,25 @@ export function planCircuit(
     wallZ: WALL_Z,
     seed: st.seed,
   };
-  const allMidis = audioHits.flatMap((h) => h.notes.map((n) => n.midi));
-  const lo = allMidis.length ? Math.min(...allMidis) : 60;
-  const hi = allMidis.length ? Math.max(...allMidis) : 72;
-  const segAt = (t: number) =>
-    segments[
-      Math.max(
-        0,
-        lastIndex(
-          segments.map((s) => s.start),
-          t,
-        ),
-      )
-    ];
   const nb = split.length;
-  // con varias bolas, cada una baja por su propio carril (sin solaparse con los demás)
-  const laneGap = 1.0;
-  const pace = st.pace3d; // unidades/s de caída media
-  const yTarget = (t: number) => -pace * t;
-  const g0 = 14 * st.gravity;
-  // piezas y carriles ya colocados: entre piezas de la misma bola se respeta la holgura estética; con las de
-  // otras bolas (en su propio carril) basta con que no se toquen
-  const placed: { x: number; y: number; clear: number; ball: number }[] = [];
-  let curBall = 0;
-  const nearPlaced = (x: number, y: number, clear: number): boolean => {
-    for (const p of placed) {
-      if (Math.abs(p.y - y) > 2.5) continue;
-      const need = p.ball === curBall ? 0.5 * (clear + p.clear) : 0.55;
-      if (Math.hypot(p.x - x, p.y - y) < need) return true;
+  const g0 = G0 * st.gravity;
+  const slope = st.pace3d; // factor de pendiente (1 = normal)
+  const W = Math.max(1.5, st.spread3d); // semianchura del circuito
+  const lenW = KEY_LEN_WHITE * st.tileSize;
+  const lenB = KEY_LEN_BLACK * st.tileSize;
+
+  // frases del MIDI: en cada una la bola lleva un rumbo; entre frases lo cambia con una curva suave
+  const phraseStarts = (T: number[]): number[] => {
+    const out = [0];
+    let start = T[0] ?? 0;
+    for (let i = 1; i < T.length; i++) {
+      const gap = T[i] - T[i - 1];
+      if ((gap >= 0.55 && T[i] - start > 1.6) || T[i] - start > 6.5) {
+        out.push(i);
+        start = T[i];
+      }
     }
-    return false;
+    return out;
   };
 
   for (let b = 0; b < nb; b++) {
@@ -405,18 +293,49 @@ export function planCircuit(
     const T = bh.map((h) => h.t);
     const S = bh.map((h) => h.strength);
     const col = hitColors(bh, st);
-    const kinds = bh.map((h) => segAt(h.t).kind);
     const midis = bh.map((h) => Math.max(...h.notes.map((n) => n.midi)));
-    const sizes = bh.map((_, k) => kindSize(kinds[k], midis[k], lo, hi, st));
-    curBall = b;
-    const laneX = nb > 1 ? (b - (nb - 1) / 2) * laneGap : 0;
-    const laneHalf = nb > 1 ? laneGap * 0.45 : st.spread3d;
+    const black = midis.map(isBlack);
+    const lens = black.map((bk) => (bk ? lenB : lenW));
+    // con varias bolas, cada una tiene su franja horizontal
+    const bandW = nb > 1 ? (2 * W) / nb - 0.3 : 2 * W;
+    const bandC = nb > 1 ? -W + ((2 * W) / nb) * (b + 0.5) : 0;
+    const bounds = { lo: bandC - bandW / 2, hi: bandC + bandW / 2 };
+    const shaftLen = clamp((bandW - SHAFT_GAP - 0.5) / 2, 0, lenW);
+    const shaftOk = shaftLen >= 0.5;
     const ball: BallPlan = { T, S, col, P: [], fl: [], pre: null, tail: null, pieces: [] };
     plan.balls.push(ball);
     if (!N) continue;
-    // profundidad de cada pieza (pequeña variación para que no sea un plano)
-    const depth = (k: number) => 0.25 * (rnd(k + 11, b + st.seed) - 0.5);
-    // caída inicial: entra por arriba (fuera de plano) y llega a la primera pieza justo en su nota
+    const depth = (k: number) => 0.12 * (rnd(k + 11, b + st.seed) - 0.5);
+
+    // ---- rumbo por frases: u ∈ [-1, 1] es la parte horizontal del avance (signo = lado) ----
+    const phrases = phraseStarts(T);
+    const uOf: number[] = new Array(N).fill(0); // rumbo "deseado" en cada choque (sin suavizar)
+    {
+      let lastSign = sr(st.seed, b + 3) < 0.5 ? 1 : -1;
+      let cx = bandC - lastSign * bandW * 0.3;
+      for (let pi = 0; pi < phrases.length; pi++) {
+        const k0 = phrases[pi];
+        const k1 = pi + 1 < phrases.length ? phrases[pi + 1] : N;
+        // lado: hacia el centro si estamos cerca de un borde; si no, alterna
+        let sign = Math.abs(cx - bandC) > 0.3 * bandW ? -Math.sign(cx - bandC) : -lastSign;
+        if (sign === 0) sign = -lastSign;
+        const mag = 0.45 + 0.5 * sr(st.seed + 11, k0 + b * 1000);
+        for (let k = k0; k < k1; k++) uOf[k] = sign * mag;
+        // estimación del avance de la frase para decidir el lado de la siguiente
+        let adv = 0;
+        for (let k = k0; k < k1 - 1; k++) adv += clamp(1.9 * (T[k + 1] - T[k]), 0.5, 1.5) * mag;
+        cx += sign * Math.min(adv, bandW * 0.8);
+        cx = clamp(cx, bounds.lo, bounds.hi);
+        lastSign = sign;
+      }
+    }
+
+    // ---- estado del recorrido ----
+    let dir: 1 | -1 = uOf[0] >= 0 ? 1 : -1;
+    let u = uOf[0]; // rumbo suavizado
+    const x0 = bandC - dir * bandW * 0.3;
+    const y0 = 0;
+    // caída inicial: entra por arriba (fuera de plano) y llega a la primera tecla justo en su nota
     const D0 = 4.5;
     let gPre = g0;
     let tf = Math.sqrt((2 * D0) / gPre);
@@ -424,246 +343,167 @@ export function planCircuit(
       tf = T[0];
       gPre = (2 * D0) / (tf * tf);
     }
-    const x0 = laneX + (nb > 1 ? 0.6 * (sr(st.seed, b) - 0.5) : 0);
-    const y0 = yTarget(T[0]);
     ball.pre = { tRel: T[0] - tf, g: gPre, from: [x0, y0 + D0, depth(0)] };
-
-    interface Node {
-      x: number;
-      y: number;
-      vin: V3;
-      cost: number;
-      parent: number;
-      dx: number;
-      pn: V3; // normal de la pieza anterior
-      pv: V3; // velocidad al dejar la pieza anterior
-      rail?: RailBuild; // el intervalo anterior fue por carril
-    }
-    const BEAM = N > 240 ? 18 : 28;
-    const DXN = 13;
-    let beam: Node[] = [
-      { x: x0, y: y0, vin: [0, -gPre * tf, 0], cost: 0, parent: -1, dx: 0, pn: [0, 1, 0], pv: [0, 0, 0] },
-    ];
-    const steps: Node[][] = [beam];
-    const ancestors = (node: Node, k: number) => {
-      const out: { x: number; y: number }[] = [];
-      let cur: Node | undefined = node;
-      let kk = k;
-      while (cur && out.length < 8 && kk >= 1) {
-        const parent: Node = steps[kk - 1][cur.parent];
-        out.push({ x: parent.x, y: parent.y });
-        cur = parent;
-        kk--;
-      }
-      return out;
-    };
-    const railEnv: RailEnv = {
-      laneX,
-      laneHalf,
-      spread: st.spread3d,
-      g0,
-      seed: st.seed,
-      ball: b,
-      blocked: nearPlaced,
-    };
-    for (let k = 0; k < N - 1; k++) {
-      const dt = T[k + 1] - T[k];
-      const kindNext = kinds[k + 1];
-      const clear = Math.max(KIND_CLEAR[kindNext], KIND_CLEAR[kinds[k]]) * L;
-      const dz = depth(k + 1) - depth(k);
-      if (dt >= RAIL_DT) {
-        // ---- carril: la bola baja rodando hasta la pieza siguiente ----
-        const s = beam[0];
-        const yt = Math.min(yTarget(T[k + 1]), s.y - Math.max(0.8, 0.5 * dt));
-        const prev = ancestors(s, k);
-        let nx = s.x;
-        let bestScore = Infinity;
-        for (let a = 0; a < 9; a++) {
-          const u = (a / 8) * 2 - 1;
-          const x = Math.max(-st.spread3d, Math.min(st.spread3d, laneX + u * laneHalf * 0.9));
-          if (nearPlaced(x, yt, clear) || prev.some((p) => Math.hypot(x - p.x, yt - p.y) < clear)) continue;
-          const score = Math.abs(u - (sr(st.seed + b, k + 50) * 2 - 1)) + (Math.abs(x - s.x) < 0.4 ? 1 : 0);
-          if (score < bestScore) {
-            bestScore = score;
-            nx = x;
-          }
-        }
-        const Pk: V3 = [s.x, s.y, depth(k)];
-        const Pn: V3 = [nx, yt, depth(k + 1)];
-        const rb = buildRail(Pk, Pn, T[k], T[k + 1], k, railEnv);
-        const d: V3 = [rb.vOut[0] - s.vin[0], rb.vOut[1] - s.vin[1], rb.vOut[2] - s.vin[2]];
-        let nrm = norm(d);
-        if (nrm[1] < KIND_MIN_NY[kinds[k]])
-          nrm = norm([nrm[0] * 0.5, KIND_MIN_NY[kinds[k]] + 0.05, nrm[2] * 0.5]);
-        beam = [
-          {
-            x: nx,
-            y: yt,
-            vin: rb.vinNext,
-            cost: s.cost,
-            parent: 0,
-            dx: nx - s.x,
-            pn: nrm,
-            pv: rb.vOut,
-            rail: rb,
-          },
-        ];
-        steps.push(beam);
-        continue;
-      }
-      // ---- salto: parábola corta entre dos piezas (gravedad real como mínimo) ----
-      const hop = hopHeight(dt);
-      const g = Math.max(g0, Math.min(400, ((8 * hop) / (dt * dt)) * st.gravity));
-      const cand: Node[] = [];
-      // si con las reglas normales no hay salida, se relajan (inclinación, restitución, carril) antes de forzar
-      for (let relax = 0; relax < 4 && !cand.length; relax++) {
-        const minNy = relax < 3 ? KIND_MIN_NY[kinds[k]] - 0.15 * relax : 0.2;
-        const eMin = relax < 3 ? (relax ? 0.3 : 0.4) : 0.1;
-        const eMax = relax < 3 ? (relax ? 2.0 : 1.6) : 4;
-        const laneLimit = relax < 2 ? laneHalf : Math.min(st.spread3d, laneHalf + 0.3);
-        for (let si = 0; si < beam.length; si++) {
-          const s = beam[si];
-          const prev = ancestors(s, k);
-          const yt = yTarget(T[k + 1]);
-          const dropBase = Math.max(0.25, s.y - yt);
-          const maxDx = Math.min(2.2 * dropBase + 0.4 + relax, laneLimit);
-          for (const df of [0.6, 0.8, 1, 1.2, 1.45, 1.8]) {
-            const drop = dropBase * df;
-            for (let a = 0; a < DXN; a++) {
-              const dx = maxDx * ((2 * a) / (DXN - 1) - 1);
-              const nx = s.x + dx;
-              if (Math.abs(nx - laneX) > laneLimit || Math.abs(nx) > st.spread3d) continue;
-              const ny = s.y - drop;
-              let ok = Math.hypot(dx, drop) >= clear;
-              for (const p of prev) if (ok && Math.hypot(nx - p.x, ny - p.y) < clear) ok = false;
-              if (!ok || nearPlaced(nx, ny, clear)) continue;
-              const vout: V3 = [dx / dt, -drop / dt + 0.5 * g * dt, dz / dt];
-              const d: V3 = [vout[0] - s.vin[0], vout[1] - s.vin[1], vout[2] - s.vin[2]];
-              const dm = Math.hypot(d[0], d[1], d[2]);
-              if (dm < 1e-3) continue;
-              const nrm: V3 = [d[0] / dm, d[1] / dm, d[2] / dm];
-              if (nrm[1] < minNy) continue;
-              const vn = s.vin[0] * nrm[0] + s.vin[1] * nrm[1] + s.vin[2] * nrm[2];
-              if (vn > -0.01) continue;
-              const e = dm / -vn - 1;
-              if (e < eMin || e > eMax) continue;
-              let c = ((e - 0.85) / 0.3) ** 2 + 1.2 * ((1 - nrm[1]) / 0.25) ** 2;
-              c += ((ny - yt) / 0.7) ** 2; // seguir el ritmo de caída común
-              c += 0.3 * ((Math.abs(dx) - 0.4 * maxDx) / (0.5 * maxDx + 1e-6)) ** 2;
-              if (Math.abs(s.dx) > 1e-3 && Math.sign(dx) === Math.sign(s.dx)) c += 0.35 * (1 - st.chaos);
-              c += (0.3 + 1.5 * st.chaos) * rnd(k + 1 + st.seed * 7, a * 10 + df + b);
-              c += 1e-7 * (a + df) + 3 * relax;
-              cand.push({
-                x: nx,
-                y: ny,
-                vin: [vout[0], vout[1] - g * dt, vout[2]],
-                cost: s.cost + c,
-                parent: si,
-                dx,
-                pn: nrm,
-                pv: vout,
-              });
-            }
-          }
-        }
-      }
-      if (!cand.length) {
-        // sin salida posible con física creíble: el primer hueco libre por debajo (no debería pasar)
-        const s = beam[0];
-        const prev = ancestors(s, k);
-        const yt = yTarget(T[k + 1]);
-        let best: { x: number; y: number; score: number } | null = null;
-        for (let a = 0; a < 25; a++) {
-          const dx = (a % 2 ? -1 : 1) * Math.ceil(a / 2) * 0.15;
-          const nx = s.x + dx;
-          if (Math.abs(nx - laneX) > laneHalf + 0.3 || Math.abs(nx) > st.spread3d + 0.3) continue;
-          for (let drop = Math.max(0.3, s.y - yt) * 0.7; drop < clear * 4; drop += 0.15) {
-            const ny = s.y - drop;
-            if (Math.hypot(dx, drop) < clear) continue;
-            if (prev.some((p) => Math.hypot(nx - p.x, ny - p.y) < clear) || nearPlaced(nx, ny, clear))
-              continue;
-            const score = Math.abs(ny - yt) + 0.3 * Math.abs(nx - laneX);
-            if (!best || score < best.score) best = { x: nx, y: ny, score };
-            break;
-          }
-        }
-        const nx = best ? best.x : s.x;
-        const ny = best ? best.y : s.y - clear * 2;
-        const vout: V3 = [(nx - s.x) / dt, -(s.y - ny) / dt + 0.5 * g * dt, dz / dt];
-        cand.push({
-          x: nx,
-          y: ny,
-          vin: [vout[0], vout[1] - g * dt, vout[2]],
-          cost: s.cost + 50,
-          parent: 0,
-          dx: nx - s.x,
-          pn: [0, 1, 0],
-          pv: vout,
+    const P: V3[] = [[x0, y0, depth(0)]];
+    const vins: V3[] = [[0, -gPre * tf, 0]];
+    const vouts: V3[] = [];
+    const tips: (1 | -1)[] = [];
+    const inShaft: boolean[] = [];
+    const railAt: (RailBuild | null)[] = [];
+    let shaft: { start: number; side: 1 | -1; xs: number[]; fixedUntil: number } | null = null;
+    const closeShaft = (k: number) => {
+      if (!shaft) return;
+      // barras solo en la parte recta del pozo (mientras el centro no se movía)
+      const fixedKeys = shaft.xs.filter((_, i) => T[shaft!.start + i] <= shaft!.fixedUntil);
+      if (fixedKeys.length >= 6) {
+        const xs = fixedKeys.reduce((a, c) => a + c, 0) / fixedKeys.length;
+        const kEnd = shaft.start + fixedKeys.length - 1;
+        // las barras van justo por fuera de las dos hileras (las teclas apuntan a la cámara)
+        plan.shafts.push({
+          ball: b,
+          xL: xs - SHAFT_GAP / 2 - 0.32,
+          xR: xs + SHAFT_GAP / 2 + 0.32,
+          yTop: P[shaft.start][1] + 0.5,
+          yBottom: P[Math.min(k, kEnd)][1] - 0.5,
         });
       }
-      cand.sort((p, q) => p.cost - q.cost);
-      const seen = new Set<string>();
-      const next: Node[] = [];
-      for (const c of cand) {
-        const key = `${Math.round(c.x / 0.25)}:${Math.round(c.y / 0.25)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        next.push(c);
-        if (next.length >= BEAM) break;
-      }
-      beam = next;
-      steps.push(beam);
-    }
-    const path: Node[] = new Array(N);
-    let idx = 0;
-    for (let k = N - 1; k >= 0; k--) {
-      path[k] = steps[k][idx];
-      idx = path[k].parent;
-    }
-    const normals: V3[] = path.map((_, k) => (k < N - 1 ? path[k + 1].pn : [0, 1, 0]));
-    const vouts: V3[] = path.map((_, k) => (k < N - 1 ? path[k + 1].pv : [0, 0, 0]));
-    {
-      // último choque: un par de botes en la pieza y después cae fuera de plano
-      const last = path[N - 1];
-      const vin = Math.hypot(last.vin[0], last.vin[1], last.vin[2]) || 1;
-      vouts[N - 1] = [0, Math.min(vin * 0.6, Math.sqrt(2 * g0 * 0.8)), 0];
-      ball.tail = { g: g0, vy0: vouts[N - 1][1], e: 0.5, hold: 1.1 };
-    }
-    ball.P = path.map((p, k) => [p.x, p.y, depth(k)] as V3);
+      shaft = null;
+    };
+    const fastAhead = (k: number) => {
+      for (let j = k; j < Math.min(N - 1, k + 3); j++) if (T[j + 1] - T[j] > FAST_DT) return false;
+      return k + 3 <= N - 1;
+    };
+
     for (let k = 0; k < N - 1; k++) {
       const dt = T[k + 1] - T[k];
-      const rb = path[k + 1].rail;
+      const [x, y] = P[k];
+      const z1 = depth(k + 1);
+      // el rumbo se acerca al deseado poco a poco (curvas suaves entre frases)
+      u += (uOf[k] - u) * clamp(dt / 0.9, 0.12, 0.6);
+      // ---------- carril ----------
+      if (dt >= RAIL_DT) {
+        closeShaft(k);
+        const rb = buildRail(P[k], T[k], T[k + 1], u >= 0 ? 1 : -1, bounds, g0, slope, z1);
+        railAt[k] = rb;
+        vouts[k] = rb.vOut;
+        tips[k] = rb.dir;
+        inShaft[k] = false;
+        P.push(rb.Pn);
+        vins.push(rb.vinNext);
+        dir = rb.dir;
+        u = dir * Math.max(0.5, Math.abs(u));
+        continue;
+      }
+      railAt[k] = null;
+      // ---------- pozo: zigzag entre dos hileras de teclas inclinadas hacia dentro ----------
+      const stayInShaft = shaft && dt <= FAST_DT * 1.25;
+      if (shaftOk && (stayInShaft || (dt <= FAST_DT && fastAhead(k)))) {
+        if (!shaft) {
+          const xs = clamp(
+            x + dir * (SHAFT_GAP / 2),
+            bounds.lo + SHAFT_GAP / 2 + shaftLen + 0.25,
+            bounds.hi - SHAFT_GAP / 2 - shaftLen - 0.25,
+          );
+          // los primeros segundos el pozo es recto (paredes con barra); después el centro vuelve a fluir
+          shaft = { start: k, side: (x < xs ? -1 : 1) as 1 | -1, xs: [xs], fixedUntil: T[k] + 3.5 };
+        }
+        const fixed = T[k + 1] <= shaft.fixedUntil;
+        const prevXs = shaft.xs[shaft.xs.length - 1];
+        const xs = fixed
+          ? prevXs
+          : clamp(
+              prevXs + u * 0.55 * dt,
+              bounds.lo + SHAFT_GAP / 2 + shaftLen * 0.5 + 0.2,
+              bounds.hi - SHAFT_GAP / 2 - shaftLen * 0.5 - 0.2,
+            );
+        shaft.xs.push(xs);
+        const side = (shaft.side * -1) as 1 | -1; // la bola va a la otra hilera
+        // un poco de variación lateral para que no sea una cremallera perfecta
+        const nx = xs + side * (SHAFT_GAP / 2) + 0.18 * (sr(st.seed + 21, k + b * 333) - 0.5);
+        const d = clamp(0.42 + 0.6 * dt, 0.45, 0.62) * clamp(slope, 0.6, 1.6);
+        // gravedad del rebote entre hileras: la que deja las teclas inclinadas SHAFT_TILT grados hacia dentro
+        const g = clamp((2 * SHAFT_GAP) / (dt * dt * Math.tan((SHAFT_TILT * Math.PI) / 180)), g0, 400);
+        const vout: V3 = [(nx - x) / dt, -d / dt + 0.5 * g * dt, (z1 - P[k][2]) / dt];
+        vouts[k] = vout;
+        tips[k] = (shaft.side * -1) as 1 | -1;
+        inShaft[k] = k > shaft.start;
+        P.push([nx, y - d, z1]);
+        vins.push([vout[0], vout[1] - g * dt, vout[2]]);
+        shaft.side = side;
+        dir = u >= 0 ? 1 : -1;
+        continue;
+      }
+      closeShaft(k);
+      // ---------- rampa: salto de tecla en tecla siguiendo el rumbo ----------
+      const hx = clamp(1.9 * dt, 0.5, 1.5) * clamp(st.tileSize, 0.7, 1.4);
+      let dx = u * hx + 0.08 * hx * (sr(st.seed + 5, k + b * 777) - 0.5);
+      // sin sitio por delante: el rumbo se da la vuelta (curva) y este salto ya va hacia dentro
+      if (x + dx > bounds.hi - 0.35 || x + dx < bounds.lo + 0.35) {
+        const back = x + dx > bounds.hi - 0.35 ? -1 : 1;
+        for (let j = k; j < N; j++) uOf[j] = back * Math.max(0.5, Math.abs(uOf[j]));
+        u = back * Math.max(0.35, Math.abs(u) * 0.6);
+        dx = u * hx;
+        dx = clamp(dx, bounds.lo + 0.35 - x, bounds.hi - 0.35 - x);
+      }
+      const nx = x + dx;
+      const d = Math.max(0.3, 0.36 * Math.abs(dx)) * clamp(slope, 0.5, 2);
+      const g = g0;
+      const vout: V3 = [(nx - x) / dt, -d / dt + 0.5 * g * dt, (z1 - P[k][2]) / dt];
+      vouts[k] = vout;
+      tips[k] = dx >= 0 ? 1 : -1;
+      inShaft[k] = false;
+      dir = dx >= 0 ? 1 : -1;
+      P.push([nx, y - d, z1]);
+      vins.push([vout[0], vout[1] - g * dt, vout[2]]);
+    }
+    closeShaft(N - 1);
+    // último choque: un par de botes en la tecla y después cae fuera de plano
+    {
+      const vin = Math.hypot(...vins[N - 1]) || 1;
+      vouts[N - 1] = [0, Math.min(vin * 0.6, Math.sqrt(2 * g0 * 0.8)), 0];
+      tips[N - 1] = dir;
+      inShaft[N - 1] = !!shaft;
+      ball.tail = { g: g0, vy0: vouts[N - 1][1], e: 0.5, hold: 1.1 };
+    }
+    ball.P = P;
+    for (let k = 0; k < N - 1; k++) {
+      const rb = railAt[k];
+      const dt = T[k + 1] - T[k];
       if (rb) {
         const railIndex = plan.rails.length;
         plan.rails.push({ ball: b, k, ...rb.rail });
-        ball.fl.push({ p: ball.P[k], v: vouts[k], g: g0, rail: railIndex, exit: rb.exit });
-        for (let i = 0; i < rb.rail.pts.length; i += 6)
-          placed.push({ x: rb.rail.pts[i][0], y: rb.rail.pts[i][1], clear: 0.55, ball: b });
+        ball.fl.push({ p: P[k], v: vouts[k], g: g0, rail: railIndex, exit: rb.exit });
       } else {
-        const hop = hopHeight(dt);
-        ball.fl.push({
-          p: ball.P[k],
-          v: vouts[k],
-          g: Math.max(g0, Math.min(400, ((8 * hop) / (dt * dt)) * st.gravity)),
-        });
+        // la gravedad del salto es la que cumple la parábola planificada
+        const vy = vouts[k][1];
+        const dy = P[k + 1][1] - P[k][1];
+        const g = Math.max(g0 * 0.999, (2 * (vy * dt - dy)) / (dt * dt));
+        ball.fl.push({ p: P[k], v: vouts[k], g });
       }
     }
     for (let k = 0; k < N; k++) {
+      // normal de la tecla: la que refleja la velocidad de llegada en la de salida
+      const d: V3 = [vouts[k][0] - vins[k][0], vouts[k][1] - vins[k][1], 0];
+      let n = norm(d);
+      if (n[1] < 0.55) n = norm([Math.sign(n[0] || 1) * 0.83, 0.55, 0]); // nunca más tumbada de ~56°
+      if (!Number.isFinite(n[0]) || !Number.isFinite(n[1])) n = [0, 1, 0];
       ball.pieces.push(plan.pieces.length);
       plan.pieces.push({
-        kind: kinds[k],
+        kind: 'key',
         ball: b,
         k,
         t: T[k],
-        P: ball.P[k],
-        n: normals[k],
-        size: sizes[k],
-        black: isBlack(midis[k]),
+        P: P[k],
+        n,
+        tip: tips[k],
+        yaw: inShaft[k] ? 0 : 0.28 * (sr(st.seed + 9, k + b * 555) - 0.5),
+        size: inShaft[k] ? shaftLen * (black[k] ? 0.6 : 0.78) : lens[k],
+        black: black[k],
+        shaft: inShaft[k],
         col: col[k],
         name: bh[k].notes.length ? noteName(bh[k].notes[0].midi) : '',
         strength: S[k],
       });
-      placed.push({ x: path[k].x, y: path[k].y, clear: KIND_CLEAR[kinds[k]] * L, ball: b });
     }
   }
   const cam = planCamera(plan, st);
@@ -753,10 +593,12 @@ export function onRail(b: BallPlan, plan: CircuitPlan, t: number): boolean {
   return t >= rail.tA && t <= rail.tB;
 }
 
-/** Cámara: distancia fija (sin zoom), sigue con suavidad a todas las bolas en escena y cambia de ángulo
- *  muy despacio. Se calcula entera por adelantado: el centro se filtra tres veces con una ventana simétrica
- *  (anticipa sin tirones) y la distancia es la mínima que mantiene a las bolas dentro del encuadre
- *  durante todo el vídeo. */
+/**
+ * Cámara frontal a distancia fija (sin zoom) que sigue a las bolas con suavidad: acompaña parte del
+ * recorrido horizontal (así se ve cómo va de un lado a otro) y baja con ellas. Se calcula entera por
+ * adelantado: el centro se filtra tres veces con una ventana simétrica (anticipa sin tirones) y la
+ * distancia es la mínima que mantiene a las bolas, con aire alrededor, dentro del encuadre.
+ */
 function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dist: number } {
   const HZ = CAM_HZ;
   const frames = Math.ceil(plan.duration * HZ) + 2;
@@ -766,8 +608,9 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
   const aspect = 9 / 16;
   const tanV = Math.tan((FOV * Math.PI) / 360);
   const tanH = tanV * aspect;
-  const SAFE = 0.92; // fracción del encuadre que pueden ocupar los puntos de interés
-  const DOWN = 0.15; // el punto de mira queda por debajo de las bolas: se ve hacia dónde caen
+  const SAFE = 0.92;
+  const DOWN = 0.12; // el punto de mira queda algo por debajo de las bolas: se ve hacia dónde van
+  const FOLLOW = plan.balls.length > 1 ? 0.3 : 0.45; // cuánto acompaña la cámara el recorrido horizontal
 
   // 1) puntos de interés por fotograma: [x, y, z, margen, ...]
   const pts: number[][] = new Array(frames);
@@ -784,11 +627,10 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
       if (!ballActive(b, t)) continue;
       const p = ballAtPlan(b, plan, t);
       if (t < b.T[0] && p[1] > b.P[0][1] + 1.3) continue; // entra por arriba del plano
-      list.push(p[0], p[1], p[2], plan.r + 0.2);
+      list.push(p[0], p[1], p[2], plan.r + 0.6);
       const k = lastIndex(b.T, t);
-      // la pieza siguiente solo cuenta (y no para el centro) si la bola va a llegar enseguida
       const j = k + 1;
-      if (j < b.T.length && b.T[j] - t < 0.6) extra.push(b.P[j][0], b.P[j][1], b.P[j][2], 0.2);
+      if (j < b.T.length && b.T[j] - t < 0.6) extra.push(b.P[j][0], b.P[j][1], b.P[j][2], 0.3);
     }
     if (!list.length) {
       if (i > 0) list = pts[i - 1];
@@ -808,13 +650,13 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
       minY = Math.min(minY, list[j + 1]);
       maxY = Math.max(maxY, list[j + 1]);
     }
-    cx[i] = (minX + maxX) / 2;
+    cx[i] = FOLLOW * ((minX + maxX) / 2);
     cy[i] = (minY + maxY) / 2;
     pts[i] = list.concat(extra);
   }
 
   // 2) centro suavizado: tres medias móviles simétricas (≈ gaussiana, sin escalones ni tirones)
-  const W = Math.round(0.35 * HZ);
+  const W = Math.round(0.4 * HZ);
   const mean = (src: Float64Array): Float64Array => {
     const out = new Float64Array(frames);
     const pre = new Float64Array(frames + 1);
@@ -829,29 +671,15 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
   const scx = mean(mean(mean(cx)));
   const scy = mean(mean(mean(cy)));
 
-  // 3) ángulo por fotograma: transición muy lenta entre los ángulos de cada tramo, más un vaivén sutil
-  const segStarts = plan.segments.map((sg) => sg.start);
+  // 3) ángulo: frontal (con el giro y la altura elegidos) y, si se quiere, un vaivén muy sutil
   const az = new Float64Array(frames);
   const el = new Float64Array(frames);
-  {
-    const first = plan.segments[0] ? SHOTS[plan.segments[0].shot] : SHOTS.front;
-    const cur = st.cameraDirector
-      ? { ...first }
-      : { az: st.cameraAzimuth, el: Math.max(5, Math.min(60, st.cameraElevation - 30)) };
-    const kk = 1 - Math.exp(-dtc / 3);
-    for (let i = 0; i < frames; i++) {
-      const t = i * dtc;
-      if (st.cameraDirector) {
-        const seg = plan.segments[Math.max(0, lastIndex(segStarts, t))];
-        const want = SHOTS[seg.shot];
-        cur.az += (want.az - cur.az) * kk;
-        cur.el += (want.el - cur.el) * kk;
-      }
-      const swayA = st.cameraDirector ? 3 * Math.sin((2 * Math.PI * t) / 19) : 0;
-      const swayE = st.cameraDirector ? 1.5 * Math.sin((2 * Math.PI * t) / 27 + 1) : 0;
-      az[i] = ((cur.az + swayA) * Math.PI) / 180;
-      el[i] = ((cur.el + swayE) * Math.PI) / 180;
-    }
+  for (let i = 0; i < frames; i++) {
+    const t = i * dtc;
+    const swayA = st.cameraDirector ? 2.5 * Math.sin((2 * Math.PI * t) / 23) : 0;
+    const swayE = st.cameraDirector ? 1.2 * Math.sin((2 * Math.PI * t) / 31 + 1) : 0;
+    az[i] = ((st.cameraAzimuth + swayA) * Math.PI) / 180;
+    el[i] = ((st.cameraElevation + swayE) * Math.PI) / 180;
   }
 
   // 4) distancia fija: la mínima que deja dentro del encuadre a todos los puntos en todos los fotogramas
@@ -862,7 +690,7 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
   ];
   const lookAt = (i: number, dist: number): V3 => [scx[i], scy[i] - DOWN * dist * tanV, 0];
   const needed = (dist0: number): number => {
-    let req = 4;
+    let req = 6;
     for (let i = 0; i < frames; i++) {
       const d = dir(i);
       const fw: V3 = [-d[0], -d[1], -d[2]];
@@ -887,9 +715,8 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
     }
     return req;
   };
-  let dist = needed(8);
-  dist = Math.max(dist, needed(dist)) * 1.03;
-  if (!st.cameraDirector) dist = Math.max(dist, (st.cameraDistance / 13) * 8);
+  let dist = needed(10);
+  dist = Math.max(dist, needed(dist)) * 1.03 * clamp(st.cameraDistance, 0.5, 3);
   for (let i = 0; i < frames; i++) {
     const d = dir(i);
     const look = lookAt(i, dist);
@@ -912,19 +739,8 @@ export function cameraAt(plan: CircuitPlan, t: number): { pos: V3; look: V3; fov
   return { pos: [g(0), g(1), g(2)], look: [g(3), g(4), g(5)], fov: g(6) };
 }
 
-/** Hundimiento de una pieza tras el golpe: muelle amortiguado (unidades a lo largo de -normal). */
+/** Hundimiento de una tecla tras el golpe: muelle amortiguado (unidades a lo largo de -normal). */
 export function recoilAt(age: number, strength: number, amount: number): number {
   if (age < 0 || age > 1.2) return 0;
   return amount * (0.06 + 0.07 * strength) * Math.exp(-age / 0.16) * Math.cos(26 * age);
-}
-
-/** Intensidad de los golpes fuertes recientes (0..1); sirve para efectos sutiles, la cámara no vibra. */
-export function shakeAt(plan: CircuitPlan, t: number): number {
-  let s = 0;
-  const hits = plan.audioHits;
-  for (let i = lastIndex(plan.audioT, t); i >= 0 && t - hits[i].t < 0.35; i--) {
-    const a = t - hits[i].t;
-    if (hits[i].strength > 0.75) s += (hits[i].strength - 0.75) * 4 * Math.exp(-a / 0.1);
-  }
-  return Math.min(1, s);
 }

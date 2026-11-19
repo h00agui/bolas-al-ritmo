@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { downloadYtDlp, fetchYoutubeAudio } from './youtube.ts';
 
 const DIST = path.join(__dirname, '..', '..', 'dist');
 const DEV_URL = process.env.BOLAS_DEV_URL; // p. ej. http://localhost:5173 con `npm run dev`
@@ -68,6 +69,11 @@ function buildMenu(): void {
           click: () => win?.webContents.send('menu', 'open'),
         },
         {
+          label: 'Desde un enlace de YouTube…',
+          accelerator: 'CmdOrCtrl+Y',
+          click: () => win?.webContents.send('menu', 'youtube'),
+        },
+        {
           label: 'Guardar proyecto…',
           accelerator: 'CmdOrCtrl+S',
           click: () => win?.webContents.send('menu', 'save-project'),
@@ -92,6 +98,13 @@ function buildMenu(): void {
       label: 'Ayuda',
       submenu: [
         { label: 'Buscar actualizaciones', click: () => void checkUpdates(true) },
+        {
+          label: 'Actualizar el descargador de YouTube (yt-dlp)',
+          click: () =>
+            void downloadYtDlp()
+              .then(() => dialog.showMessageBox({ message: 'yt-dlp actualizado.' }))
+              .catch((e: Error) => dialog.showMessageBox({ type: 'warning', message: e.message })),
+        },
         {
           label: 'Código en GitHub',
           click: () => void shell.openExternal('https://github.com/h00agui/bolas-al-ritmo'),
@@ -123,6 +136,9 @@ ipcMain.handle('save-file', async (_e, name: string, data: Uint8Array) => {
   return { status: 'saved' as const, path: r.filePath };
 });
 ipcMain.handle('show-in-folder', (_e, p: string) => shell.showItemInFolder(p));
+ipcMain.handle('youtube-audio', (_e, url: string) =>
+  fetchYoutubeAudio(url, (text) => win?.webContents.send('youtube-progress', text)),
+);
 ipcMain.handle('open-file', async () => {
   const r = await dialog.showOpenDialog(win!, {
     properties: ['openFile'],
