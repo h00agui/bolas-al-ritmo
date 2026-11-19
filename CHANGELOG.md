@@ -2,7 +2,7 @@
 
 ## 0.7.3 — 2026-11-19
 
-- **Tuberías onduladas**: ya no son rectas; ondean arriba y abajo mientras bajan (la bola frena en las crestas y corre en los valles) y siguen haciendo curvas en U en los bordes.
+- **Tuberías con formas bonitas**: ondean suavemente mientras bajan (las ondas entran y salen sin esquinas), hacen horquillas redondeadas en los bordes y, de vez en cuando, un rizo; cristal más transparente.
 
 ## 0.7.2 — 2026-11-19
 

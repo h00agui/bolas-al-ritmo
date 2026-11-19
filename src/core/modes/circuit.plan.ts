@@ -109,9 +109,10 @@ const RAIL_IN = 0.25; // s del salto desde la tecla al carril
 const RAIL_OUT = 0.22; // s de la salida del carril a la tecla
 const RAIL_VMAX = 4.5; // unidades/s
 const RAIL_MU = 0.1; // rozamiento al rodar
-const U_RADIUS = 0.34; // radio de las curvas en U
-const WAVE_AMP = 0.2; // amplitud de las ondas de las tuberías
-const WAVE_LEN = 2.4; // longitud de onda (unidades de avance)
+const TURN_RADIUS = 0.8; // radio de las curvas en U (horquillas)
+const LOOP_RADIUS = 0.6; // radio de los rizos
+const WAVE_AMP = 0.28; // amplitud de las ondas de las tuberías
+const WAVE_LEN = 3.2; // longitud de onda (unidades de avance)
 const SHAFT_GAP = 1.3; // distancia horizontal entre los puntos de contacto de las dos hileras
 const SHAFT_TILT = 38; // inclinación (grados) de las teclas del pozo hacia dentro
 const KEY_LEN_WHITE = 1.3;
@@ -174,14 +175,16 @@ function buildRail(
   const zA = A[2];
   const zStep = (zNext - zA) / Math.max(1, D); // la profundidad cambia muy despacio a lo largo del carril
   const accel = (tx: number, ty: number) => {
-    // tangente unitaria (tx, ty): aceleración al rodar con rozamiento, acotada por una velocidad máxima
+    // tangente unitaria (tx, ty): aceleración al rodar con rozamiento, acotada por una velocidad máxima;
+    // cuesta arriba (crestas, rizos) frena menos de lo real para que el recorrido no se haga lento
     const sinA = -ty;
     const cosA = Math.abs(tx);
-    return g0 * (5 / 7) * (sinA - RAIL_MU * cosA);
+    const a = g0 * (5 / 7) * (sinA - RAIL_MU * cosA);
+    return a < 0 ? a * 0.35 : a;
   };
   const push = (nx: number, ny: number, tx: number, ty: number) => {
     const a = accel(tx, ty);
-    v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 1.4, RAIL_VMAX);
+    v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 2.0, RAIL_VMAX);
     t += ds / v;
     x = nx;
     y = ny;
@@ -193,44 +196,78 @@ function buildRail(
   const edge = (d: 1 | -1) => (d > 0 ? bounds.hi - margin : bounds.lo + margin);
   let guard = 0;
   let endTangent: [number, number] = [dir * Math.cos(alpha), -Math.sin(alpha)];
-  let wavePhase = Math.PI * 2 * rnd(Math.round(Pk[0] * 7) + 17, Math.round(Pk[1] * 10)); // cada tubería ondula distinto
+  const seedA = Math.round(Pk[0] * 7) + 17;
+  const seedB = Math.round(Pk[1] * 10);
+  let wavePhase = Math.PI * 2 * rnd(seedA, seedB); // cada tubería ondula distinto
+  const waveLen = WAVE_LEN * (0.85 + 0.3 * rnd(seedA + 1, seedB));
+  let looped = false;
+  /** arco circular tangente a la dirección actual: gira `sweep` radianes (sentido según `ccw`) */
+  const arc = (R: number, sweep: number, ccw: boolean, zBump = 0) => {
+    const [tx0, ty0] = endTangent;
+    // normal hacia el centro del giro
+    const nx = ccw ? -ty0 : ty0;
+    const ny = ccw ? tx0 : -tx0;
+    const cx = x + R * nx;
+    const cy = y + R * ny;
+    const a0 = Math.atan2(y - cy, x - cx);
+    const steps = Math.max(8, Math.round((R * sweep) / ds));
+    const z0 = pts[pts.length - 1][2];
+    for (let i = 1; i <= steps && t < tB; i++) {
+      const f = i / steps;
+      const th = a0 + (ccw ? 1 : -1) * sweep * f;
+      const px = cx + R * Math.cos(th);
+      const py = cy + R * Math.sin(th);
+      const tx = (ccw ? -1 : 1) * -Math.sin(th);
+      const ty = (ccw ? -1 : 1) * Math.cos(th);
+      push(px, py, tx, ty);
+      // un rizo pasa por detrás de sí mismo: se separa un poco de la pared en el cruce
+      if (zBump) pts[pts.length - 1][2] = z0 + zBump * Math.sin(Math.PI * f);
+      endTangent = [tx, ty];
+    }
+  };
   while (t < tB && guard++ < 20000) {
     // tramo ondulado hasta el borde (o hasta que se acabe el tiempo): baja con la pendiente media y
-    // ondea arriba y abajo (la bola frena en las crestas y corre en los valles)
+    // ondea arriba y abajo (la bola frena en las crestas y corre en los valles); las ondas entran y salen
+    // suavemente para empalmar sin esquinas con las curvas
     const slopeT = Math.tan(alpha);
-    const kw = (2 * Math.PI) / WAVE_LEN;
+    const kw = (2 * Math.PI) / waveLen;
     const y0w = y;
     let u = 0;
-    while (t < tB && dir * x < dir * edge(dir)) {
+    let prevWave = 0;
+    // ¿dará tiempo a hacer la horquilla al llegar al borde? si no, la tubería sigue hasta que se acabe el
+    // tiempo (puede acercarse más al borde) y la bola sale volando desde donde esté
+    const sweep = Math.PI - 2 * alpha;
+    const hairpinTime = (TURN_RADIUS * sweep) / Math.max(1.5, v);
+    const willTurn = Math.abs(edge(dir) - x) / Math.max(1.5, v) + hairpinTime + 0.3 < tB - t;
+    const limit = willTurn ? edge(dir) : dir > 0 ? bounds.hi - 0.35 : bounds.lo + 0.35;
+    while (t < tB && dir * x < dir * limit) {
       const du = ds * Math.cos(alpha);
       u += du;
-      const ny = y0w - slopeT * u + WAVE_AMP * (Math.sin(kw * u + wavePhase) - Math.sin(wavePhase));
-      const dy = -slopeT + WAVE_AMP * kw * Math.cos(kw * u + wavePhase);
+      const toEdge = Math.abs(limit - x);
+      const amp = WAVE_AMP * Math.min(1, u / 1.0) * Math.min(1, toEdge / 1.0);
+      const wave = amp * Math.sin(kw * u + wavePhase);
+      const ny = y0w - slopeT * u + wave;
+      const dy = (-slopeT * du + (wave - prevWave)) / du;
+      prevWave = wave;
       const l = Math.hypot(1, dy);
       const tx = dir / l;
       const ty = dy / l;
       push(x + dir * du, ny, tx, ty);
       endTangent = [tx, ty];
+      // de vez en cuando, un rizo entero (si queda tiempo de sobra para acabarlo y seguir)
+      if (!looped && u > 2.2 && toEdge > 2.2 && tB - t > 2.4 && v > 3 && rnd(seedA + 2, seedB) < 0.55) {
+        looped = true;
+        arc(LOOP_RADIUS, 2 * Math.PI, dir > 0, 0.55);
+        v = Math.max(v, 2.2);
+      }
     }
     wavePhase += kw * u + Math.PI; // la siguiente tubería arranca donde quedó la onda
     if (t >= tB) break;
-    // ¿queda tiempo para una curva en U entera y algo de recta después? si no, termina aquí
-    const uTime = (Math.PI * U_RADIUS) / Math.max(1, v);
-    if (tB - t < uTime + 0.25) break;
-    // curva en U hacia abajo: de avanzar en `dir` a avanzar en -dir
-    const cx = x;
-    const cy = y - U_RADIUS;
-    const steps = Math.max(8, Math.round((Math.PI * U_RADIUS) / ds));
+    // ¿queda tiempo para la horquilla entera y algo de tubería después? si no, termina aquí
+    if (!willTurn || tB - t < (TURN_RADIUS * sweep) / Math.max(1, v) + 0.25) break;
+    // curva en U (horquilla) tangente a la tubería: de avanzar en `dir` a avanzar en -dir
     const turnStart = pts.length - 1;
-    for (let i = 1; i <= steps && t < tB; i++) {
-      const th = Math.PI / 2 - (Math.PI * i) / steps;
-      const nx = cx + dir * U_RADIUS * Math.cos(th);
-      const ny = cy + U_RADIUS * Math.sin(th);
-      const tx2 = -dir * Math.sin(th);
-      const ty2 = Math.cos(th);
-      push(nx, ny, tx2, ty2);
-      endTangent = [tx2, ty2];
-    }
+    arc(TURN_RADIUS, sweep, dir < 0);
     turns.push([turnStart, pts.length - 1]);
     dir = (dir * -1) as 1 | -1;
     v *= 0.97; // la curva frena un poco

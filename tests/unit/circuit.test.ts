@@ -186,11 +186,11 @@ describe('planCircuit', () => {
     for (const r of sparse.rails) {
       expect(r.tA).toBeGreaterThan(b.T[r.k]);
       expect(r.tB).toBeLessThan(b.T[r.k + 1]);
-      // la tubería ondula (pequeñas crestas), pero en conjunto siempre baja
+      // la tubería ondula (crestas) y puede hacer algún rizo, pero en conjunto siempre baja
       let low = r.pts[0][1];
       for (let i = 1; i < r.pts.length; i++) {
         low = Math.min(low, r.pts[i][1]);
-        expect(r.pts[i][1]).toBeLessThanOrEqual(low + 0.45);
+        expect(r.pts[i][1]).toBeLessThanOrEqual(low + 1.35);
       }
       expect(r.pts[r.pts.length - 1][1]).toBeLessThan(r.pts[0][1] - 0.3);
       expect(onRail(b, sparse, (r.tA + r.tB) / 2)).toBe(true);

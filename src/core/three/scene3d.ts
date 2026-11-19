@@ -432,13 +432,14 @@ export class Scene3D {
     const railMat = neonMaterial(railCol, 0.6);
     const pipeMat = new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
-      roughness: 0.06,
+      roughness: 0.15,
       metalness: 0,
       transparent: true,
-      opacity: 0.14,
+      opacity: 0.06,
       side: THREE.DoubleSide,
       depthWrite: false,
-      clearcoat: 1,
+      clearcoat: 0.5,
+      envMapIntensity: 0.35,
     });
     const makeTube = (
       points: THREE.Vector3[],
