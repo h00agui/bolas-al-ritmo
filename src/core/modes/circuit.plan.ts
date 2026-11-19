@@ -152,6 +152,7 @@ function buildRail(
   g0: number,
   alphaDeg: number,
   zNext: number,
+  energy: number, // golpes por segundo justo después del hueco (música viva → rizos; tranquila → vórtices)
 ): RailBuild {
   const tA = tk + RAIL_IN;
   const tB = tn - RAIL_OUT;
@@ -174,21 +175,29 @@ function buildRail(
   let t = tA;
   const zA = A[2];
   const zStep = (zNext - zA) / Math.max(1, D); // la profundidad cambia muy despacio a lo largo del carril
-  const accel = (tx: number, ty: number) => {
-    // tangente unitaria (tx, ty): aceleración al rodar con rozamiento, acotada por una velocidad máxima;
+  const accel = (tx: number, ty: number, tz = 0) => {
+    // tangente unitaria: aceleración al rodar con rozamiento, acotada por una velocidad máxima;
     // cuesta arriba (crestas, rizos) frena menos de lo real para que el recorrido no se haga lento
     const sinA = -ty;
-    const cosA = Math.abs(tx);
+    const cosA = Math.hypot(tx, tz);
     const a = g0 * (5 / 7) * (sinA - RAIL_MU * cosA);
     return a < 0 ? a * 0.35 : a;
   };
-  const push = (nx: number, ny: number, tx: number, ty: number) => {
-    const a = accel(tx, ty);
+  // tras un vórtice plano la tubería sale cruzando por delante de la espiral: se separa de la pared un trecho
+  let crossLeft = 0;
+  let crossTotal = 1;
+  const push = (nx: number, ny: number, tx: number, ty: number, dz = 0, tz = 0) => {
+    const a = accel(tx, ty, tz);
     v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 2.0, RAIL_VMAX);
     t += ds / v;
     x = nx;
     y = ny;
-    pts.push([x, y, zA + zStep * (t - tA)]);
+    let zx = 0;
+    if (crossLeft > 0) {
+      zx = 0.95 * Math.sin(Math.PI * (1 - crossLeft / crossTotal));
+      crossLeft -= ds;
+    }
+    pts.push([x, y, zA + zStep * (t - tA) + dz + zx]);
     times.push(t);
   };
   // margen en el borde para que la tecla de llegada quepa dentro del circuito
@@ -200,18 +209,25 @@ function buildRail(
   const seedB = Math.round(Pk[1] * 10);
   let wavePhase = Math.PI * 2 * rnd(seedA, seedB); // cada tubería ondula distinto
   const waveLen = WAVE_LEN * (0.85 + 0.3 * rnd(seedA + 1, seedB));
-  let looped = false;
-  /** arco circular tangente a la dirección actual: gira `sweep` radianes (sentido según `ccw`) */
+  const bandW = bounds.hi - bounds.lo;
+  // ---- qué elementos caben en esta tubería (tiempo disponible) y cuáles pegan con la música ----
+  // música viva después del hueco → rizos (rápidos y punzantes); tranquila → hélice o vórtice (elegantes)
+  const calm = energy < 2.2;
+  let big: 'none' | 'helix' | 'whirl' = 'none';
+  if (D >= 6.2 && bandW >= 3.4 && calm && rnd(seedA + 3, seedB) < 0.6) big = 'whirl';
+  else if (D >= 3.4 && rnd(seedA + 4, seedB) < (calm ? 0.8 : 0.45)) big = 'helix';
+  const helixTurns = D >= 5.5 ? 2 : 1;
+  let loopsLeft = D >= 1.8 ? (D >= 4.2 && big === 'none' ? 2 : 1) : 0;
+  if (!calm && D >= 1.8) loopsLeft = Math.max(loopsLeft, 1);
+  /** arco circular en el plano de la pared, tangente a la dirección actual (sweep radianes) */
   const arc = (R: number, sweep: number, ccw: boolean, zBump = 0) => {
     const [tx0, ty0] = endTangent;
-    // normal hacia el centro del giro
     const nx = ccw ? -ty0 : ty0;
     const ny = ccw ? tx0 : -tx0;
     const cx = x + R * nx;
     const cy = y + R * ny;
     const a0 = Math.atan2(y - cy, x - cx);
     const steps = Math.max(8, Math.round((R * sweep) / ds));
-    const z0 = pts[pts.length - 1][2];
     for (let i = 1; i <= steps && t < tB; i++) {
       const f = i / steps;
       const th = a0 + (ccw ? 1 : -1) * sweep * f;
@@ -219,12 +235,60 @@ function buildRail(
       const py = cy + R * Math.sin(th);
       const tx = (ccw ? -1 : 1) * -Math.sin(th);
       const ty = (ccw ? -1 : 1) * Math.cos(th);
-      push(px, py, tx, ty);
       // un rizo pasa por detrás de sí mismo: se separa un poco de la pared en el cruce
-      if (zBump) pts[pts.length - 1][2] = z0 + zBump * Math.sin(Math.PI * f);
+      push(px, py, tx, ty, zBump ? zBump * Math.sin(Math.PI * f) : 0);
       endTangent = [tx, ty];
     }
   };
+  /** hélice (vórtice en 3D): da vueltas alrededor de un eje vertical saliendo hacia la cámara, bajando */
+  const helix = (R: number, turnsN: number, pitch: number) => {
+    const cx = x;
+    const cy0 = y;
+    const total = 2 * Math.PI * turnsN;
+    const steps = Math.max(24, Math.round((R * total) / ds));
+    for (let i = 1; i <= steps && t < tB; i++) {
+      const ang = (total * i) / steps;
+      const th = dir > 0 ? -Math.PI / 2 + ang : -Math.PI / 2 - ang;
+      const px = cx + R * Math.cos(th);
+      const pz = R + R * Math.sin(th);
+      const py = cy0 - (pitch * ang) / (2 * Math.PI);
+      const sgn = dir > 0 ? 1 : -1;
+      const tx3 = -sgn * R * Math.sin(th);
+      const ty3 = -pitch / (2 * Math.PI);
+      const tz3 = sgn * R * Math.cos(th);
+      const l = Math.hypot(tx3, ty3, tz3) || 1;
+      push(px, py, tx3 / l, ty3 / l, pz, tz3 / l);
+      const l2 = Math.hypot(tx3, ty3) || 1;
+      endTangent = [tx3 / l2, ty3 / l2];
+    }
+    endTangent = [dir, 0];
+  };
+  /** vórtice plano: espiral en la pared que se cierra hacia el centro y sale por abajo en sentido contrario */
+  const whirl = (R0: number, R1: number, turnsN: number, drop: number) => {
+    const cx = x;
+    const cy = y - R0;
+    const total = 2 * Math.PI * turnsN;
+    const steps = Math.max(40, Math.round((total * (R0 + R1)) / 2 / ds));
+    let px0 = x;
+    let py0 = y;
+    for (let i = 1; i <= steps && t < tB; i++) {
+      const ang = (total * i) / steps;
+      const R = R0 - ((R0 - R1) * ang) / total;
+      const th = Math.PI / 2 - dir * ang;
+      const px = cx + R * Math.cos(th);
+      const py = cy - (drop * ang) / total + R * Math.sin(th);
+      const l = Math.hypot(px - px0, py - py0) || 1;
+      v = Math.max(v, 3); // en el vórtice la bola no se arrastra
+      push(px, py, (px - px0) / l, (py - py0) / l);
+      endTangent = [(px - px0) / l, (py - py0) / l];
+      px0 = px;
+      py0 = py;
+    }
+    dir = (dir * -1) as 1 | -1;
+    crossTotal = 2 * (R0 + 0.3);
+    crossLeft = crossTotal;
+  };
+  const roomBoth = (R: number) => x - R > bounds.lo + 0.3 && x + R < bounds.hi - 0.3;
   while (t < tB && guard++ < 20000) {
     // tramo ondulado hasta el borde (o hasta que se acabe el tiempo): baja con la pendiente media y
     // ondea arriba y abajo (la bola frena en las crestas y corre en los valles); las ondas entran y salen
@@ -240,6 +304,7 @@ function buildRail(
     const hairpinTime = (TURN_RADIUS * sweep) / Math.max(1.5, v);
     const willTurn = Math.abs(edge(dir) - x) / Math.max(1.5, v) + hairpinTime + 0.3 < tB - t;
     const limit = willTurn ? edge(dir) : dir > 0 ? bounds.hi - 0.35 : bounds.lo + 0.35;
+    let restart = false;
     while (t < tB && dir * x < dir * limit) {
       const du = ds * Math.cos(alpha);
       u += du;
@@ -254,14 +319,31 @@ function buildRail(
       const ty = dy / l;
       push(x + dir * du, ny, tx, ty);
       endTangent = [tx, ty];
-      // de vez en cuando, un rizo entero (si queda tiempo de sobra para acabarlo y seguir)
-      if (!looped && u > 2.2 && toEdge > 2.2 && tB - t > 2.4 && v > 3 && rnd(seedA + 2, seedB) < 0.55) {
-        looped = true;
+      if (u < 1.2 || crossLeft > 0) continue;
+      // elementos especiales (si queda tiempo de sobra para acabarlos y seguir)
+      const left = tB - t;
+      if (big === 'whirl' && roomBoth(1.3) && left > 5.2) {
+        big = 'none';
+        whirl(1.3, 0.38, 2.5, 0.7);
+        restart = true;
+        break;
+      }
+      if (big === 'helix' && roomBoth(0.75) && left > 1.7 * helixTurns + 0.8) {
+        big = 'none';
+        helix(0.7, helixTurns, 0.9);
+        restart = true;
+        break;
+      }
+      if (loopsLeft > 0 && toEdge > 1.6 && left > 2.2 && v > 2.8 && rnd(seedA + 5 + loopsLeft, seedB) < 0.7) {
+        loopsLeft--;
         arc(LOOP_RADIUS, 2 * Math.PI, dir > 0, 0.55);
-        v = Math.max(v, 2.2);
+        v = Math.max(v, 2.4);
+        restart = true;
+        break;
       }
     }
     wavePhase += kw * u + Math.PI; // la siguiente tubería arranca donde quedó la onda
+    if (restart) continue; // sigue ondulando desde donde acabó el elemento
     if (t >= tB) break;
     // ¿queda tiempo para la horquilla entera y algo de tubería después? si no, termina aquí
     if (!willTurn || tB - t < (TURN_RADIUS * sweep) / Math.max(1, v) + 0.25) break;
@@ -462,7 +544,9 @@ export function planCircuit(
           const D = Math.max(0.3, dt - RAIL_IN - RAIL_OUT);
           alphaDeg = (Math.asin(clamp((y - want + 0.3) / (3.6 * D), 0.2, 0.8)) * 180) / Math.PI;
         }
-        const rb = buildRail(P[k], T[k], T[k + 1], u >= 0 ? 1 : -1, bounds, g0, alphaDeg, z1);
+        let after = 0;
+        for (let j = k + 1; j < N && T[j] < T[k + 1] + 2; j++) after++;
+        const rb = buildRail(P[k], T[k], T[k + 1], u >= 0 ? 1 : -1, bounds, g0, alphaDeg, z1, after / 2);
         railAt[k] = rb;
         vouts[k] = rb.vOut;
         tips[k] = rb.dir;

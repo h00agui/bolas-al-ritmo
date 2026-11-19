@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.8.0 — 2026-11-19
+
+- **Elementos de tubería según la música**: además de ondas y horquillas, las tuberías hacen **rizos** (loopings), **hélices** (vórtices en 3D que salen hacia la cámara dando vueltas) y **vórtices planos** (espirales que se cierran hacia el centro y salen cruzando por delante). Qué aparece depende del hueco entre notas y del carácter de lo que viene después: música viva → rizos; tranquila → hélices y vórtices.
+
 ## 0.7.3 — 2026-11-19
 
 - **Tuberías con formas bonitas**: ondean suavemente mientras bajan (las ondas entran y salen sin esquinas), hacen horquillas redondeadas en los bordes y, de vez en cuando, un rizo; cristal más transparente.
