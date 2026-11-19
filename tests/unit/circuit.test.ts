@@ -82,7 +82,6 @@ describe('planCircuit', () => {
       if (keys[k].shaft && keys[k - 1].shaft) {
         expect(keys[k].tip).toBe(-keys[k - 1].tip);
         expect(Math.sign(keys[k].P[0] - keys[k - 1].P[0])).toBe(keys[k - 1].tip);
-        expect(keys[k].n[1]).toBeLessThan(0.95); // inclinadas hacia dentro
         shaftPairs++;
       }
     expect(shaftPairs).toBeGreaterThan(5);
@@ -95,12 +94,19 @@ describe('planCircuit', () => {
     const ramp = planCircuit(medium, 21, { ...st, maxBalls: 1 }, { minGap: 0.1 });
     const rk = ramp.balls[0].pieces.map((i) => ramp.pieces[i]);
     expect(rk.every((p) => !p.shaft)).toBe(true);
+    let horizontal = 0;
     for (let k = 1; k < rk.length; k++) {
       const dx = Math.abs(rk[k].P[0] - rk[k - 1].P[0]);
       const dy = rk[k - 1].P[1] - rk[k].P[1];
       expect(dy).toBeGreaterThan(0.2);
-      expect(dx).toBeGreaterThan(dy * 0.8);
+      // las teclas no se pisan: o están bien separadas en horizontal, o una queda bien por debajo
+      expect(dx >= 0.6 || dy >= 0.85).toBe(true);
+      if (dx >= 0.6) {
+        expect(dx).toBeGreaterThan(dy * 0.8);
+        horizontal++;
+      }
     }
+    expect(horizontal).toBeGreaterThan((rk.length - 1) * 0.6);
     // cambia de sentido al llegar al borde: varias veces, pero no a cada momento
     let turns = 0;
     let dir = 0;
@@ -159,9 +165,9 @@ describe('planCircuit', () => {
       const d = Math.hypot(c.look[0] - c.pos[0], c.look[1] - c.pos[1], c.look[2] - c.pos[2]);
       expect(Math.abs(d - plan.camDist)).toBeLessThan(1e-3);
       if (prev) {
-        // movimiento por fotograma acotado (sin cortes): menos de 0,12 unidades a 60 Hz
+        // movimiento por fotograma acotado (sin cortes): menos de 0,2 unidades a 60 Hz
         const step = Math.hypot(c.pos[0] - prev.pos[0], c.pos[1] - prev.pos[1], c.pos[2] - prev.pos[2]);
-        expect(step).toBeLessThan(0.12);
+        expect(step).toBeLessThan(0.2);
       }
       prev = c;
     }

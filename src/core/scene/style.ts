@@ -64,6 +64,7 @@ export interface SceneStyle {
   ballColorFixed: string; // color fijo de la bola
   ballColor2: string; // segundo color (vetas de la canica)
   trail3d: number; // 0..1 largo de la estela
+  railColor: string; // color de neón de los carriles
 }
 
 export const DEFAULT_STYLE: SceneStyle = {
@@ -113,7 +114,7 @@ export const DEFAULT_STYLE: SceneStyle = {
   tileSize: 1,
   recoil: 1,
   ballSize3d: 0.24,
-  maxBalls: 3,
+  maxBalls: 1,
   cameraDirector: true,
   seed: 1,
   bloom: 0.35,
@@ -122,6 +123,7 @@ export const DEFAULT_STYLE: SceneStyle = {
   ballColorFixed: '#2f6bff',
   ballColor2: '#ffffff',
   trail3d: 0.45,
+  railColor: '#35e0ff',
 };
 
 /** Color de cada choque según el modo de color. */

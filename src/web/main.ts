@@ -668,6 +668,7 @@ const CTLS: Ctl[] = [
   strCtl('ballColorFixed', st as never, 'ballColorFixed', 'style'),
   strCtl('ballColor2', st as never, 'ballColor2', 'style'),
   numCtl('trail3d', st as never, 'trail3d', 'style', (v) => `${Math.round(v * 100)} %`),
+  strCtl('railColor', st as never, 'railColor', 'style'),
   numCtl('seed', st as never, 'seed', 'style', (v) => `#${v}`),
   numCtl('bloom', st as never, 'bloom', 'style', (v) => `${Math.round(v * 100)} %`),
   boolCtl('counter', st as never, 'counter', 'style'),

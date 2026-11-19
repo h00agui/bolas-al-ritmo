@@ -28,7 +28,6 @@ export interface Piece {
   P: V3; // centro de la bola en el choque
   n: V3; // normal de la cara superior de la tecla
   tip: 1 | -1; // lado hacia el que se inclina la tecla (en el pozo, hacia dentro)
-  yaw: number; // pequeño giro estético alrededor de la normal (radianes)
   size: number; // largo de la tecla
   black: boolean; // tecla negra (sostenido)
   shaft: boolean; // tecla de una pared del pozo
@@ -45,6 +44,7 @@ export interface Rail {
   tB: number; // lo deja
   pts: V3[]; // centro de la bola a lo largo del carril
   times: number[]; // instante en cada punto (absoluto)
+  turns: [number, number][]; // tramos de curva en U: índices [desde, hasta] de las muestras
 }
 
 /** Pozo: dos paredes de teclas entre las que rebota la bola. */
@@ -112,8 +112,11 @@ const RAIL_MU = 0.1; // rozamiento al rodar
 const U_RADIUS = 0.34; // radio de las curvas en U
 const SHAFT_GAP = 1.3; // distancia horizontal entre los puntos de contacto de las dos hileras
 const SHAFT_TILT = 38; // inclinación (grados) de las teclas del pozo hacia dentro
-const KEY_LEN_WHITE = 1.6;
-const KEY_LEN_BLACK = 1.05;
+const KEY_LEN_WHITE = 1.3;
+const KEY_LEN_BLACK = 0.9;
+/** separación mínima entre teclas para que no se pisen en pantalla (horizontal o vertical) */
+const KEY_MIN_DX = 0.6;
+const KEY_MIN_DY = 0.9;
 
 const sr = (seed: number, k: number) => rnd(seed * 0.173 + 1, k + 0.5);
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12);
@@ -144,7 +147,7 @@ function buildRail(
   dirIn: 1 | -1,
   bounds: { lo: number; hi: number },
   g0: number,
-  slope: number,
+  alphaDeg: number,
   zNext: number,
 ): RailBuild {
   const tA = tk + RAIL_IN;
@@ -157,10 +160,11 @@ function buildRail(
   const vOut: V3 = [(A[0] - Pk[0]) / RAIL_IN, (A[1] - Pk[1] + 0.5 * g0 * RAIL_IN * RAIL_IN) / RAIL_IN, 0];
   const vA: V3 = [vOut[0], vOut[1] - g0 * RAIL_IN, 0];
   let v = clamp(Math.hypot(vA[0], vA[1]), 1.6, 3.2);
-  const alpha = (20 * clamp(slope, 0.5, 2) * Math.PI) / 180; // inclinación de las rectas
+  const alpha = (clamp(alphaDeg, 10, 55) * Math.PI) / 180; // inclinación de las rectas
   const ds = 0.04;
   const pts: V3[] = [A];
   const times: number[] = [tA];
+  const turns: [number, number][] = [];
   let x = A[0];
   let y = A[1];
   let dir = dir0;
@@ -175,7 +179,7 @@ function buildRail(
   };
   const push = (nx: number, ny: number, tx: number, ty: number) => {
     const a = accel(tx, ty);
-    v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 0.8, RAIL_VMAX);
+    v = clamp(Math.sqrt(Math.max(0.6, v * v + 2 * a * ds)), 1.4, RAIL_VMAX);
     t += ds / v;
     x = nx;
     y = ny;
@@ -183,7 +187,8 @@ function buildRail(
     times.push(t);
   };
   // margen en el borde para que la tecla de llegada quepa dentro del circuito
-  const edge = (d: 1 | -1) => (d > 0 ? bounds.hi - 1.1 : bounds.lo + 1.1);
+  const margin = Math.min(1.1, 0.25 * (bounds.hi - bounds.lo));
+  const edge = (d: 1 | -1) => (d > 0 ? bounds.hi - margin : bounds.lo + margin);
   let guard = 0;
   let endTangent: [number, number] = [dir * Math.cos(alpha), -Math.sin(alpha)];
   while (t < tB && guard++ < 20000) {
@@ -200,6 +205,7 @@ function buildRail(
     const cx = x;
     const cy = y - U_RADIUS;
     const steps = Math.max(8, Math.round((Math.PI * U_RADIUS) / ds));
+    const turnStart = pts.length - 1;
     for (let i = 1; i <= steps && t < tB; i++) {
       const th = Math.PI / 2 - (Math.PI * i) / steps;
       const nx = cx + dir * U_RADIUS * Math.cos(th);
@@ -209,8 +215,9 @@ function buildRail(
       push(nx, ny, tx2, ty2);
       endTangent = [tx2, ty2];
     }
+    turns.push([turnStart, pts.length - 1]);
     dir = (dir * -1) as 1 | -1;
-    v *= 0.92; // la curva frena un poco
+    v *= 0.97; // la curva frena un poco
   }
   // (nunca menos de tres muestras: un tramito recto aunque el tiempo fuera mínimo)
   while (pts.length < 3) push(x + endTangent[0] * ds, y + endTangent[1] * ds, endTangent[0], endTangent[1]);
@@ -231,7 +238,7 @@ function buildRail(
   }
   const dirOut = (vExit[0] >= 0 ? 1 : -1) as 1 | -1;
   return {
-    rail: { tA, tB, pts, times },
+    rail: { tA, tB, pts, times, turns },
     vOut,
     exit: { p: B, v: vExit, g: g0 },
     vinNext: [vExit[0], vExit[1] - g0 * RAIL_OUT, 0],
@@ -287,6 +294,18 @@ export function planCircuit(
     return out;
   };
 
+  // con varias bolas, la primera marca el ritmo de bajada y las demás lo siguen (si no, se separan)
+  let refT: number[] = [];
+  let refY: number[] = [];
+  const yRef = (t: number): number | null => {
+    if (refT.length < 2) return null;
+    const i = Math.max(0, lastIndex(refT, t));
+    const j = Math.min(refT.length - 1, i + 1);
+    if (j === i) return refY[i];
+    const f = clamp((t - refT[i]) / Math.max(1e-6, refT[j] - refT[i]), 0, 1);
+    return refY[i] + (refY[j] - refY[i]) * f;
+  };
+
   for (let b = 0; b < nb; b++) {
     const bh = split[b].hits;
     const N = bh.length;
@@ -334,7 +353,7 @@ export function planCircuit(
     let dir: 1 | -1 = uOf[0] >= 0 ? 1 : -1;
     let u = uOf[0]; // rumbo suavizado
     const x0 = bandC - dir * bandW * 0.3;
-    const y0 = 0;
+    const y0 = yRef(T[0]) ?? 0; // las bolas secundarias entran a la altura que lleva la primera
     // caída inicial: entra por arriba (fuera de plano) y llega a la primera tecla justo en su nota
     const D0 = 4.5;
     let gPre = g0;
@@ -383,7 +402,14 @@ export function planCircuit(
       // ---------- carril ----------
       if (dt >= RAIL_DT) {
         closeShaft(k);
-        const rb = buildRail(P[k], T[k], T[k + 1], u >= 0 ? 1 : -1, bounds, g0, slope, z1);
+        // inclinación: la normal (según la pendiente elegida) o la que haga falta para seguir a la primera bola
+        const want = yRef(T[k + 1]);
+        let alphaDeg = 20 * clamp(slope, 0.5, 2);
+        if (want !== null) {
+          const D = Math.max(0.3, dt - RAIL_IN - RAIL_OUT);
+          alphaDeg = (Math.asin(clamp((y - want + 0.3) / (3.6 * D), 0.2, 0.8)) * 180) / Math.PI;
+        }
+        const rb = buildRail(P[k], T[k], T[k + 1], u >= 0 ? 1 : -1, bounds, g0, alphaDeg, z1);
         railAt[k] = rb;
         vouts[k] = rb.vOut;
         tips[k] = rb.dir;
@@ -420,7 +446,9 @@ export function planCircuit(
         const side = (shaft.side * -1) as 1 | -1; // la bola va a la otra hilera
         // un poco de variación lateral para que no sea una cremallera perfecta
         const nx = xs + side * (SHAFT_GAP / 2) + 0.18 * (sr(st.seed + 21, k + b * 333) - 0.5);
-        const d = clamp(0.42 + 0.6 * dt, 0.45, 0.62) * clamp(slope, 0.6, 1.6);
+        let d = clamp(0.4 + 0.45 * dt, KEY_MIN_DY / 2 + 0.03, 0.58) * clamp(slope, 0.6, 1.6);
+        const want = yRef(T[k + 1]);
+        if (want !== null) d = clamp(y - want, d, d + 1.0);
         // gravedad del rebote entre hileras: la que deja las teclas inclinadas SHAFT_TILT grados hacia dentro
         const g = clamp((2 * SHAFT_GAP) / (dt * dt * Math.tan((SHAFT_TILT * Math.PI) / 180)), g0, 400);
         const vout: V3 = [(nx - x) / dt, -d / dt + 0.5 * g * dt, (z1 - P[k][2]) / dt];
@@ -446,7 +474,14 @@ export function planCircuit(
         dx = clamp(dx, bounds.lo + 0.35 - x, bounds.hi - 0.35 - x);
       }
       const nx = x + dx;
-      const d = Math.max(0.3, 0.36 * Math.abs(dx)) * clamp(slope, 0.5, 2);
+      let d = Math.max(0.3, 0.36 * Math.abs(dx)) * clamp(slope, 0.5, 2);
+      // si la tecla queda casi encima de la anterior (o de la de dos atrás), baja lo bastante para no pisarla
+      for (const j of [k, k - 1])
+        if (j >= 0 && Math.abs(nx - P[j][0]) < KEY_MIN_DX) d = Math.max(d, KEY_MIN_DY - (P[j][1] - y));
+      {
+        const want = yRef(T[k + 1]);
+        if (want !== null) d = clamp(y - want, d, d + 2.5 + 3 * dt);
+      }
       const g = g0;
       const vout: V3 = [(nx - x) / dt, -d / dt + 0.5 * g * dt, (z1 - P[k][2]) / dt];
       vouts[k] = vout;
@@ -466,6 +501,10 @@ export function planCircuit(
       ball.tail = { g: g0, vy0: vouts[N - 1][1], e: 0.5, hold: 1.1 };
     }
     ball.P = P;
+    if (b === 0) {
+      refT = T.slice();
+      refY = P.map((p) => p[1]);
+    }
     for (let k = 0; k < N - 1; k++) {
       const rb = railAt[k];
       const dt = T[k + 1] - T[k];
@@ -482,11 +521,8 @@ export function planCircuit(
       }
     }
     for (let k = 0; k < N; k++) {
-      // normal de la tecla: la que refleja la velocidad de llegada en la de salida
-      const d: V3 = [vouts[k][0] - vins[k][0], vouts[k][1] - vins[k][1], 0];
-      let n = norm(d);
-      if (n[1] < 0.55) n = norm([Math.sign(n[0] || 1) * 0.83, 0.55, 0]); // nunca más tumbada de ~56°
-      if (!Number.isFinite(n[0]) || !Number.isFinite(n[1])) n = [0, 1, 0];
+      // todas las teclas van perfectamente alineadas (horizontales): la bola bota en su cara superior
+      const n: V3 = [0, 1, 0];
       ball.pieces.push(plan.pieces.length);
       plan.pieces.push({
         kind: 'key',
@@ -496,7 +532,6 @@ export function planCircuit(
         P: P[k],
         n,
         tip: tips[k],
-        yaw: inShaft[k] ? 0 : 0.28 * (sr(st.seed + 9, k + b * 555) - 0.5),
         size: inShaft[k] ? shaftLen * (black[k] ? 0.6 : 0.78) : lens[k],
         black: black[k],
         shaft: inShaft[k],
@@ -524,6 +559,22 @@ const parabola = (p: V3, v: V3, g: number, tau: number): V3 => [
   p[1] + v[1] * tau - 0.5 * g * tau * tau,
   p[2] + v[2] * tau,
 ];
+
+/** Índice (fraccionario) de la muestra del carril en la que está la bola en el instante t. */
+export function railIndexAt(rail: Rail, t: number): number {
+  const { times } = rail;
+  const n = times.length;
+  if (t <= times[0]) return 0;
+  if (t >= times[n - 1]) return n - 1;
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= t) lo = mid;
+    else hi = mid;
+  }
+  return lo + (t - times[lo]) / Math.max(1e-9, times[hi] - times[lo]);
+}
 
 /** Posición sobre un carril en el instante t (interpolación entre muestras). */
 export function railAt(rail: Rail, t: number): V3 {

@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.7.0 — 2026-11-19
+
+- **Teclas perfectamente alineadas** (todas horizontales, mirando a la cámara, sin giros) y sin pisarse: si una tecla cae casi encima de otra, baja lo suficiente.
+- **Teclas de neón** del color de su nota, que se encienden mucho más al golpe y se apagan despacio.
+- **Carriles de neón** (color configurable) cuya luz acompaña a la bola y deja un rastro que se apaga detrás; las **curvas en U** son tuberías transparentes con el reborde y los anillos de neón, que también se iluminan al paso de la bola.
+- Con varias bolas, las secundarias siguen la altura de la primera (rampas, pozos y carriles ajustan su bajada); por defecto una sola bola.
+
 ## 0.6.0 — 2026-11-19
 
 - **Trazado nuevo del Circuito 3D**: solo teclas y carriles. La bola sigue un recorrido fluido de un lado a otro de la pared según las frases del MIDI (curvas suaves entre frases, tramos rectos solo a ratos); con notas rápidas zigzaguea entre dos hileras de teclas inclinadas hacia dentro (paredes rectas con barra solo los primeros segundos), a ritmo medio salta de tecla en tecla avanzando en horizontal, y con notas lejanas baja por carriles rectos con curvas en U. Las teclas llevan pequeñas variaciones de ángulo para que queden sueltas pero bonitas.
