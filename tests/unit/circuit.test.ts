@@ -173,7 +173,7 @@ describe('planCircuit', () => {
     }
   });
 
-  it('entre notas lejanas la bola baja por un carril, sin subir y sin saltos de posición', () => {
+  it('entre notas lejanas la bola baja por una tubería ondulada, sin saltos de posición', () => {
     const times = [0.5, 1.0, 1.8, 3.3, 3.5, 3.7, 6.7, 7.0, 13.0, 13.4, 14.2, 20.0, 20.3];
     const hits = times.map((t, i) => ({
       t,
@@ -186,7 +186,13 @@ describe('planCircuit', () => {
     for (const r of sparse.rails) {
       expect(r.tA).toBeGreaterThan(b.T[r.k]);
       expect(r.tB).toBeLessThan(b.T[r.k + 1]);
-      for (let i = 1; i < r.pts.length; i++) expect(r.pts[i][1]).toBeLessThanOrEqual(r.pts[i - 1][1] + 1e-6);
+      // la tubería ondula (pequeñas crestas), pero en conjunto siempre baja
+      let low = r.pts[0][1];
+      for (let i = 1; i < r.pts.length; i++) {
+        low = Math.min(low, r.pts[i][1]);
+        expect(r.pts[i][1]).toBeLessThanOrEqual(low + 0.45);
+      }
+      expect(r.pts[r.pts.length - 1][1]).toBeLessThan(r.pts[0][1] - 0.3);
       expect(onRail(b, sparse, (r.tA + r.tB) / 2)).toBe(true);
       // los carriles son rectos: fuera de las curvas en U la dirección horizontal se mantiene
       let flips = 0;

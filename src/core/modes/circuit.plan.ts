@@ -110,6 +110,8 @@ const RAIL_OUT = 0.22; // s de la salida del carril a la tecla
 const RAIL_VMAX = 4.5; // unidades/s
 const RAIL_MU = 0.1; // rozamiento al rodar
 const U_RADIUS = 0.34; // radio de las curvas en U
+const WAVE_AMP = 0.2; // amplitud de las ondas de las tuberías
+const WAVE_LEN = 2.4; // longitud de onda (unidades de avance)
 const SHAFT_GAP = 1.3; // distancia horizontal entre los puntos de contacto de las dos hileras
 const SHAFT_TILT = 38; // inclinación (grados) de las teclas del pozo hacia dentro
 const KEY_LEN_WHITE = 1.3;
@@ -191,12 +193,26 @@ function buildRail(
   const edge = (d: 1 | -1) => (d > 0 ? bounds.hi - margin : bounds.lo + margin);
   let guard = 0;
   let endTangent: [number, number] = [dir * Math.cos(alpha), -Math.sin(alpha)];
+  let wavePhase = Math.PI * 2 * rnd(Math.round(Pk[0] * 7) + 17, Math.round(Pk[1] * 10)); // cada tubería ondula distinto
   while (t < tB && guard++ < 20000) {
-    // recta hasta el borde (o hasta que se acabe el tiempo)
-    const tx = dir * Math.cos(alpha);
-    const ty = -Math.sin(alpha);
-    while (t < tB && dir * x < dir * edge(dir)) push(x + tx * ds, y + ty * ds, tx, ty);
-    endTangent = [tx, ty];
+    // tramo ondulado hasta el borde (o hasta que se acabe el tiempo): baja con la pendiente media y
+    // ondea arriba y abajo (la bola frena en las crestas y corre en los valles)
+    const slopeT = Math.tan(alpha);
+    const kw = (2 * Math.PI) / WAVE_LEN;
+    const y0w = y;
+    let u = 0;
+    while (t < tB && dir * x < dir * edge(dir)) {
+      const du = ds * Math.cos(alpha);
+      u += du;
+      const ny = y0w - slopeT * u + WAVE_AMP * (Math.sin(kw * u + wavePhase) - Math.sin(wavePhase));
+      const dy = -slopeT + WAVE_AMP * kw * Math.cos(kw * u + wavePhase);
+      const l = Math.hypot(1, dy);
+      const tx = dir / l;
+      const ty = dy / l;
+      push(x + dir * du, ny, tx, ty);
+      endTangent = [tx, ty];
+    }
+    wavePhase += kw * u + Math.PI; // la siguiente tubería arranca donde quedó la onda
     if (t >= tB) break;
     // ¿queda tiempo para una curva en U entera y algo de recta después? si no, termina aquí
     const uTime = (Math.PI * U_RADIUS) / Math.max(1, v);

@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.7.3 — 2026-11-19
+
+- **Tuberías onduladas**: ya no son rectas; ondean arriba y abajo mientras bajan (la bola frena en las crestas y corre en los valles) y siguen haciendo curvas en U en los bordes.
+
 ## 0.7.2 — 2026-11-19
 
 - **La bola siempre en la zona central**: la cámara la sigue (en horizontal y vertical) con un filtro simétrico que no tiembla con cada salto ni va con retraso; distancia fija según el encuadre elegido.

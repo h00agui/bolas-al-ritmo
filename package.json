@@ -1,6 +1,6 @@
 {
   "name": "bolas-al-ritmo",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "Vídeos verticales de una bola que toca una canción: cada choque suena la nota del MIDI. Web + motor de render.",
   "type": "module",
