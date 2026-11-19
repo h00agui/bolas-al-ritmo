@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { hexToRgb, type RGB } from '../color.ts';
 import { drawTheme, themeBase } from './themes.ts';
 import {
@@ -36,7 +37,7 @@ const PLAN_STYLE_KEYS: (keyof SceneStyle)[] = [
   'seed',
 ];
 const TRAIL_N = 40; // muestras de la estela
-const KEY_IDLE = 0.6; // emisión de una tecla de neón en reposo
+const KEY_RIM_IDLE = 0.75; // emisión del reborde de neón de una tecla en reposo
 const WALL_W = 36; // tamaño de la pared de fondo (sigue a la cámara; así los degradados se ven)
 const WALL_H = 64;
 
@@ -77,6 +78,34 @@ function neonMaterial(color: THREE.Color, idle: number): THREE.MeshPhysicalMater
       );
   };
   return m;
+}
+
+/** Marco de neón: tubitos a lo largo de las 12 aristas de una caja w×h×l (con bolitas en las esquinas). */
+function frameGeometry(w: number, h: number, l: number, r: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const bar = (len: number, axis: 'x' | 'y' | 'z', px: number, py: number, pz: number) => {
+    const g = new THREE.CylinderGeometry(r, r, len, 8, 1);
+    if (axis === 'x') g.rotateZ(Math.PI / 2);
+    if (axis === 'z') g.rotateX(Math.PI / 2);
+    g.translate(px, py, pz);
+    parts.push(g);
+  };
+  for (const sy of [-1, 1]) for (const sz of [-1, 1]) bar(w, 'x', 0, (sy * h) / 2, (sz * l) / 2);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) bar(h, 'y', (sx * w) / 2, 0, (sz * l) / 2);
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) bar(l, 'z', (sx * w) / 2, (sy * h) / 2, 0);
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1])
+      for (const sz of [-1, 1]) {
+        const g = new THREE.SphereGeometry(r, 8, 6);
+        g.translate((sx * w) / 2, (sy * h) / 2, (sz * l) / 2);
+        parts.push(g);
+      }
+  const geo = mergeGeometries(parts, false)!;
+  geo.setAttribute(
+    'glow',
+    new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count), 1),
+  );
+  return geo;
 }
 
 interface PieceObj {
@@ -327,39 +356,45 @@ export class Scene3D {
       mount.castShadow = true;
       this.root.add(mount);
     };
+    const bodyBase = new THREE.Color(0x14151b);
     for (const piece of plan.pieces) {
-      // tecla de neón del color de su nota, con volumen: sale de la pared hacia la cámara (bisagra atrás,
-      // punta delante). Todas perfectamente alineadas (horizontales, mirando a la cámara).
+      // tecla oscura con el reborde de neón del color de su nota; sale de la pared hacia la cámara (bisagra
+      // atrás, punta delante). Todas perfectamente alineadas (horizontales, mirando a la cámara).
       const n = new THREE.Vector3(0, 1, 0);
       const contact = new THREE.Vector3(...piece.P).addScaledVector(n, -plan.r);
       const len = piece.size;
       const wd = st.tileSize * (piece.black ? 0.24 : 0.3); // anchura
-      const th = st.tileSize * (piece.black ? 0.2 : 0.2); // grosor
+      const th = st.tileSize * 0.2; // grosor
       const noteCol = rgb(piece.col);
       const hsl = { h: 0, s: 0, l: 0 };
       noteCol.getHSL(hsl);
-      noteCol.setHSL(hsl.h, Math.min(1, hsl.s * 1.7 + 0.2), piece.black ? 0.45 : 0.6);
-      const mat = neonMaterial(noteCol, KEY_IDLE);
+      noteCol.setHSL(hsl.h, Math.min(1, hsl.s * 1.7 + 0.25), 0.58);
+      const rimMat = neonMaterial(noteCol, KEY_RIM_IDLE);
+      const bodyMat = new THREE.MeshPhysicalMaterial({
+        color: bodyBase,
+        emissive: noteCol,
+        emissiveIntensity: 0,
+        roughness: 0.3,
+        metalness: 0.1,
+        clearcoat: 0.9,
+        clearcoatRoughness: 0.15,
+      });
       const group = new THREE.Group();
       group.position.copy(contact).addScaledVector(n, -th / 2);
       // la bola pisa a 0,42·len del borde delantero; la bisagra queda en el extremo de atrás (hacia la pared)
       const pivot = new THREE.Group();
       pivot.position.z = -0.58 * len;
-      const keyGeo = new RoundedBoxGeometry(wd, th, len, 2, th * 0.3);
-      keyGeo.setAttribute(
-        'glow',
-        new THREE.Float32BufferAttribute(new Float32Array(keyGeo.attributes.position.count), 1),
-      );
-      const key = new THREE.Mesh(keyGeo, mat);
-      key.position.z = len / 2;
-      key.castShadow = true;
-      key.receiveShadow = true;
-      pivot.add(key);
+      // reborde: tubitos de neón sobre las aristas del cuerpo oscuro
+      const rim = new THREE.Mesh(frameGeometry(wd, th, len, 0.022), rimMat);
+      rim.position.z = len / 2;
+      pivot.add(rim);
+      const body = new THREE.Mesh(new RoundedBoxGeometry(wd, th, len, 2, 0.02), bodyMat);
+      body.position.z = len / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      pivot.add(body);
       group.add(pivot);
-      const hinge = new THREE.Mesh(
-        new THREE.CylinderGeometry(th * 0.4, th * 0.4, wd * 1.25, 14),
-        this.chrome,
-      );
+      const hinge = new THREE.Mesh(new THREE.CylinderGeometry(th * 0.4, th * 0.4, wd * 1.25, 14), this.dark);
       hinge.rotation.z = Math.PI / 2;
       hinge.position.z = -0.58 * len + 0.04;
       hinge.castShadow = true;
@@ -373,8 +408,8 @@ export class Scene3D {
         group,
         base: back.clone(),
         normal: n,
-        mats: [mat],
-        baseCol: [mat.color.clone()],
+        mats: [bodyMat, rimMat],
+        baseCol: [bodyMat.color.clone(), rimMat.color.clone()],
         pivot,
         lever: 0.58 * len,
       });
@@ -391,44 +426,45 @@ export class Scene3D {
         for (let y = sh.yBottom + 0.3; y < sh.yTop; y += 2.2) addBracket(x, y, 0.02);
       }
     }
-    // carriles de neón: dos tubos por debajo de la trayectoria (su luz acompaña a la bola) y, en las curvas
-    // en U, una tubería transparente con el reborde de neón
+    // carriles: tuberías transparentes alrededor de la trayectoria, con el reborde (dos aristas) y aros de
+    // neón; la luz del neón acompaña a la bola
     const railCol = rgb(hexToRgb(st.railColor));
-    const railMat = neonMaterial(railCol, 0.55);
+    const railMat = neonMaterial(railCol, 0.6);
     const pipeMat = new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
-      roughness: 0.08,
+      roughness: 0.06,
       metalness: 0,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.14,
       side: THREE.DoubleSide,
       depthWrite: false,
       clearcoat: 1,
     });
     const makeTube = (
       points: THREE.Vector3[],
-      sFrom: number,
+      sv: number[],
       radius: number,
       mat: THREE.Material,
     ): NeonTube | null => {
       if (points.length < 2) return null;
       const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-      const segs = Math.min(600, Math.max(2, points.length));
+      const segs = Math.min(800, Math.max(2, points.length));
       const geo = new THREE.TubeGeometry(curve, segs, radius, 10, false);
       const count = geo.attributes.position.count;
       const glow = new THREE.Float32BufferAttribute(new Float32Array(count), 1);
       glow.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute('glow', glow);
-      // recorrido de cada vértice: por anillo del tubo (segs+1 anillos de 11 vértices)
-      let total = 0;
-      for (let i = 1; i < points.length; i++) total += points[i].distanceTo(points[i - 1]);
-      const sv = new Float32Array(count);
-      for (let v = 0; v < count; v++) sv[v] = sFrom + (Math.floor(v / 11) / segs) * total;
+      // recorrido de cada vértice: por anillo del tubo (segs+1 anillos de 11 vértices), interpolando sv
+      const s = new Float32Array(count);
+      for (let v = 0; v < count; v++) {
+        const f = (Math.floor(v / 11) / segs) * (sv.length - 1);
+        const i = Math.min(sv.length - 2, Math.floor(f));
+        s[v] = sv[i] + (sv[i + 1] - sv[i]) * (f - i);
+      }
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
-      mesh.receiveShadow = true;
       this.root.add(mesh);
-      return { mesh, glow, s: sv, lit: false };
+      return { mesh, glow, s, lit: false };
     };
     for (const rail of plan.rails) {
       const pts = rail.pts;
@@ -440,87 +476,66 @@ export class Scene3D {
           Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
       const obj: RailObj = { rail, cum, tubes: [], lit: false };
       this.railObjs.push(obj);
-      // tramos: rectas (entre curvas) y curvas en U
-      const pad = 3; // muestras de solape para que la tubería "abrace" el final de la recta
-      const ranges: { a: number; b: number; turn: boolean }[] = [];
-      let cursor = 0;
-      for (const [t0, t1] of rail.turns) {
-        if (t0 > cursor) ranges.push({ a: cursor, b: Math.min(pts.length - 1, t0 + 1), turn: false });
-        ranges.push({ a: Math.max(0, t0 - pad), b: Math.min(pts.length - 1, t1 + pad), turn: true });
-        cursor = t1;
-      }
-      if (cursor < pts.length - 1) ranges.push({ a: cursor, b: pts.length - 1, turn: false });
-      const step = Math.max(1, Math.floor(pts.length / 240));
-      const slice = (a: number, b: number, dy: number, dz: number) =>
-        pts
-          .map((p, i) => ({ p, i }))
-          .filter(({ i }) => i >= a && i <= b && (i % step === 0 || i === a || i === b))
-          .map(({ p }) => new THREE.Vector3(p[0], p[1] + dy, p[2] + dz));
-      for (const rg of ranges) {
-        if (!rg.turn) {
-          for (const dz of [-0.55 * plan.r, 0.55 * plan.r]) {
-            const t = makeTube(slice(rg.a, rg.b, -0.72 * plan.r, dz), cum[rg.a], 0.032, railMat);
-            if (t) obj.tubes.push(t);
-          }
-          // soportes cada ~1.3 unidades de recorrido
-          let acc = 1.3;
-          for (let i = rg.a + 1; i <= rg.b; i++) {
-            acc += cum[i] - cum[i - 1];
-            if (acc >= 1.3) {
-              acc = 0;
-              addBracket(pts[i][0], pts[i][1] - 0.72 * plan.r, pts[i][2] - 0.55 * plan.r);
-            }
-          }
-        } else {
-          // tubería transparente alrededor de la trayectoria, con el reborde (dos aristas) de neón
-          const R = 1.4 * plan.r;
-          const center = slice(rg.a, rg.b, 0, 0);
-          if (center.length < 2) continue;
-          const curve = new THREE.CatmullRomCurve3(center, false, 'centripetal');
-          const pipe = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, Math.max(8, center.length), R, 16, false),
-            pipeMat,
+      const R = 1.4 * plan.r;
+      const step = Math.max(1, Math.floor(pts.length / 320));
+      const idxs = pts.map((_, i) => i).filter((i) => i % step === 0 || i === pts.length - 1);
+      const center = idxs.map((i) => new THREE.Vector3(pts[i][0], pts[i][1], pts[i][2]));
+      const sv = idxs.map((i) => cum[i]);
+      if (center.length < 2) continue;
+      const curve = new THREE.CatmullRomCurve3(center, false, 'centripetal');
+      const pipe = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, Math.min(800, center.length), R, 16, false),
+        pipeMat,
+      );
+      pipe.renderOrder = 2;
+      this.root.add(pipe);
+      // aristas: desplazadas ±R en la normal de la curva dentro del plano de la pared
+      for (const sgn of [-1, 1]) {
+        const edge: THREE.Vector3[] = [];
+        for (let i = 0; i < center.length; i++) {
+          const p0 = center[Math.max(0, i - 1)];
+          const p1 = center[Math.min(center.length - 1, i + 1)];
+          const tx = p1.x - p0.x;
+          const ty = p1.y - p0.y;
+          const l = Math.hypot(tx, ty) || 1;
+          edge.push(
+            new THREE.Vector3(
+              center[i].x - (ty / l) * R * sgn,
+              center[i].y + (tx / l) * R * sgn,
+              center[i].z,
+            ),
           );
-          pipe.renderOrder = 2;
-          this.root.add(pipe);
-          // aristas: desplazadas ±R en la normal de la curva dentro del plano de la pared
-          for (const sgn of [-1, 1]) {
-            const edge: THREE.Vector3[] = [];
-            for (let i = 0; i < center.length; i++) {
-              const p0 = center[Math.max(0, i - 1)];
-              const p1 = center[Math.min(center.length - 1, i + 1)];
-              const tx = p1.x - p0.x;
-              const ty = p1.y - p0.y;
-              const l = Math.hypot(tx, ty) || 1;
-              edge.push(
-                new THREE.Vector3(
-                  center[i].x - (ty / l) * R * sgn,
-                  center[i].y + (tx / l) * R * sgn,
-                  center[i].z,
-                ),
-              );
-            }
-            const t = makeTube(edge, cum[rg.a], 0.028, railMat);
-            if (t) obj.tubes.push(t);
-          }
-          // anillos de neón en la boca y la salida de la tubería
-          for (const idx of [0, center.length - 1]) {
-            const p0 = center[Math.max(0, idx - 1)];
-            const p1 = center[Math.min(center.length - 1, idx + 1)];
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.03, 8, 32), railMat);
-            const geo = ring.geometry;
-            geo.setAttribute(
-              'glow',
-              new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count), 1),
-            );
-            ring.position.copy(center[idx]);
-            ring.quaternion.setFromUnitVectors(
-              new THREE.Vector3(0, 0, 1),
-              new THREE.Vector3().subVectors(p1, p0).normalize(),
-            );
-            this.root.add(ring);
-          }
-          for (let i = rg.a + 2; i <= rg.b; i += 6) addBracket(pts[i][0], pts[i][1] - R, pts[i][2]);
+        }
+        const t = makeTube(edge, sv, 0.028, railMat);
+        if (t) obj.tubes.push(t);
+      }
+      // la tubería es una sola pieza: solo lleva reborde grueso de neón en la boca y en la salida
+      const ringAt = (i: number, tube: number) => {
+        const p0 = center[Math.max(0, i - 1)];
+        const p1 = center[Math.min(center.length - 1, i + 1)];
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(R, tube, 10, 40), railMat);
+        const geo = ring.geometry;
+        const glow = new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count), 1);
+        glow.setUsage(THREE.DynamicDrawUsage);
+        geo.setAttribute('glow', glow);
+        ring.position.copy(center[i]);
+        ring.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3().subVectors(p1, p0).normalize(),
+        );
+        this.root.add(ring);
+        const s = new Float32Array(geo.attributes.position.count).fill(sv[i]);
+        obj.tubes.push({ mesh: ring, glow, s, lit: false });
+      };
+      ringAt(0, 0.06);
+      ringAt(center.length - 1, 0.06);
+      // soportes a la pared cada ~2,5 unidades de recorrido (no cortan la tubería)
+      let acc = 1.0;
+      for (let i = 1; i < center.length; i++) {
+        acc += sv[i] - sv[i - 1];
+        if (acc >= 2.5) {
+          acc = 0;
+          addBracket(center[i].x, center[i].y - R, center[i].z);
         }
       }
     }
@@ -542,7 +557,7 @@ export class Scene3D {
     if (po.pivot) po.pivot.rotation.x = 0;
     for (let mi = 0; mi < po.mats.length; mi++) {
       po.mats[mi].color.copy(po.baseCol[mi]);
-      po.mats[mi].emissiveIntensity = KEY_IDLE;
+      po.mats[mi].emissiveIntensity = mi === 0 ? 0 : KEY_RIM_IDLE;
     }
   }
 
@@ -780,9 +795,10 @@ export class Scene3D {
         // que se va con las notas siguientes
         const attack = Math.min(1, a / 0.06);
         const flashP = attack * Math.exp(-a / 0.55);
-        const sustain = Math.max(0, 1 - (k - j) / 22) * attack;
-        // neón: la tecla ya tiene su color; al golpe se enciende mucho más y se apaga despacio
-        for (const m of po.mats) m.emissiveIntensity = KEY_IDLE + 2.2 * flashP + 0.5 * sustain;
+        const sustain = Math.max(0, 1 - (k - j) / 9) * attack;
+        // al golpe la tecla entera se enciende de su color (y el reborde sube); luego se apaga despacio
+        po.mats[0].emissiveIntensity = 2.4 * flashP + 0.35 * sustain;
+        po.mats[1].emissiveIntensity = KEY_RIM_IDLE + 1.8 * flashP + 0.4 * sustain;
       }
       if (k >= 26) this.resetPiece(this.pieces[bp.pieces[k - 26]]);
     }

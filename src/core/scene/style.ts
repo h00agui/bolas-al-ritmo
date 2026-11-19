@@ -117,7 +117,7 @@ export const DEFAULT_STYLE: SceneStyle = {
   maxBalls: 1,
   cameraDirector: true,
   seed: 1,
-  bloom: 0.35,
+  bloom: 0.5,
   ballStyle3d: 'canica',
   ballColor3d: 'fija',
   ballColorFixed: '#2f6bff',
