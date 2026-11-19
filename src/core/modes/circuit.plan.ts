@@ -645,10 +645,11 @@ export function onRail(b: BallPlan, plan: CircuitPlan, t: number): boolean {
 }
 
 /**
- * Cámara frontal a distancia fija (sin zoom) que sigue a las bolas con suavidad: acompaña parte del
- * recorrido horizontal (así se ve cómo va de un lado a otro) y baja con ellas. Se calcula entera por
- * adelantado: el centro se filtra tres veces con una ventana simétrica (anticipa sin tirones) y la
- * distancia es la mínima que mantiene a las bolas, con aire alrededor, dentro del encuadre.
+ * Cámara frontal a distancia fija (sin zoom) que sigue a las bolas con suavidad para que queden siempre
+ * en la zona central de la pantalla. Se calcula entera por adelantado: el centro es la posición de las
+ * bolas filtrada tres veces con una ventana simétrica (sigue sin retraso ni tirones y no tiembla con cada
+ * salto), y la distancia es fija: la que da el encuadre elegido, o más si hiciera falta para que ninguna
+ * bola se salga.
  */
 function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dist: number } {
   const HZ = CAM_HZ;
@@ -660,8 +661,8 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
   const tanV = Math.tan((FOV * Math.PI) / 360);
   const tanH = tanV * aspect;
   const SAFE = 0.92;
-  const DOWN = 0.12; // el punto de mira queda algo por debajo de las bolas: se ve hacia dónde van
-  const FOLLOW = plan.balls.length > 1 ? 0.3 : 0.45; // cuánto acompaña la cámara el recorrido horizontal
+  const DOWN = 0.1; // el punto de mira queda un pelín por debajo de las bolas: se ve hacia dónde van
+  const FRAME_W = 5.2; // anchura del encuadre (unidades) con "Distancia de cámara" = 1
 
   // 1) puntos de interés por fotograma: [x, y, z, margen, ...]
   const pts: number[][] = new Array(frames);
@@ -701,13 +702,13 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
       minY = Math.min(minY, list[j + 1]);
       maxY = Math.max(maxY, list[j + 1]);
     }
-    cx[i] = FOLLOW * ((minX + maxX) / 2);
+    cx[i] = (minX + maxX) / 2;
     cy[i] = (minY + maxY) / 2;
     pts[i] = list.concat(extra);
   }
 
   // 2) centro suavizado: tres medias móviles simétricas (≈ gaussiana, sin escalones ni tirones)
-  const W = Math.round(0.4 * HZ);
+  const W = Math.round(0.3 * HZ);
   const mean = (src: Float64Array): Float64Array => {
     const out = new Float64Array(frames);
     const pre = new Float64Array(frames + 1);
@@ -766,7 +767,8 @@ function planCamera(plan: CircuitPlan, st: SceneStyle): { cam: Float32Array; dis
     }
     return req;
   };
-  let dist = needed(10);
+  const base = FRAME_W / (2 * tanH);
+  let dist = Math.max(base, needed(base));
   dist = Math.max(dist, needed(dist)) * 1.03 * clamp(st.cameraDistance, 0.5, 3);
   for (let i = 0; i < frames; i++) {
     const d = dir(i);

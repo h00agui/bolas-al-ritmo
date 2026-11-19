@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.7.2 — 2026-11-19
+
+- **La bola siempre en la zona central**: la cámara la sigue (en horizontal y vertical) con un filtro simétrico que no tiembla con cada salto ni va con retraso; distancia fija según el encuadre elegido.
+
 ## 0.7.1 — 2026-11-19
 
 - **Teclas oscuras con el reborde de neón** del color de su nota; al golpe se enciende la tecla entera y se apaga poco a poco.
