@@ -4,7 +4,7 @@
 
 - **Teclas oscuras con el reborde de neón** del color de su nota; al golpe se enciende la tecla entera y se apaga poco a poco.
 - **Carriles = tuberías**: todo el carril es una tubería transparente de una sola pieza, con las aristas de neón (la luz acompaña a la bola) y un reborde grueso de neón en la boca y en la salida; sin aros intermedios.
-- Resplandor algo mayor por defecto.
+- Resplandor algo mayor por defecto y cámara un poco más cerca (se ve menos recorrido por delante); ambos ajustables.
 
 ## 0.7.0 — 2026-11-19
 

@@ -105,7 +105,7 @@ export const DEFAULT_STYLE: SceneStyle = {
   floorColor: '#3c6e55',
   cameraAzimuth: 10,
   cameraElevation: 26,
-  cameraDistance: 1,
+  cameraDistance: 0.82,
   lightAngle: 35,
   shadowSoftness: 0.6,
   pace3d: 1,
